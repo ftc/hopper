@@ -1,6 +1,6 @@
-import com.github.retronym.SbtOneJar._
+//import com.github.retronym.SbtOneJar._
 
-oneJarSettings
+//oneJarSettings
 
 name := "Hopper"
 
@@ -12,7 +12,7 @@ scalaVersion := "2.10.2"
 
 offline := true
 
-ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
+//ivyScala := ivyScala.value map { _.copy(overrideScalaVersion = true) }
 
 scalacOptions ++= Seq("-deprecation", "-feature")
 
