@@ -278,7 +278,7 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
       assert (reversedExceptionFreeCFG.containsNode(cfg.exit()), 
               s"exit block ${cfg.exit()} should be in $reversedExceptionFreeCFG but it's not. ir is ${relevantNode.getIR()}")
       val domInfo = Dominators.make(reversedExceptionFreeCFG, cfg.exit())
-      val domGraph = domInfo.getGraph()
+      val domGraph = domInfo.dominatorTree()
       val blks = blkMap.keys
       // if some block b0 in blkMap is postdominated by a differnt block b1 in blkMap, we don't need to consider jumping
       // to b0 because we will always end up visiting b1 first

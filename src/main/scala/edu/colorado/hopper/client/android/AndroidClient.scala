@@ -4,6 +4,7 @@ import java.io.File
 import java.util.jar.JarFile
 
 import com.ibm.wala.classLoader.{IClass, IMethod}
+import com.ibm.wala.ipa.callgraph.propagation.InstanceKey
 import com.ibm.wala.ipa.callgraph.{AnalysisCache, AnalysisOptions, AnalysisScope, CallGraphBuilder}
 import com.ibm.wala.ipa.cha.IClassHierarchy
 import edu.colorado.hopper.client.Client
@@ -38,7 +39,7 @@ abstract class AndroidClient[T](appPath : String, androidJar : File, libPath : O
   }
   
   override def makeCallGraphBuilder(options : AnalysisOptions, cache : AnalysisCache, cha : IClassHierarchy, 
-                           analysisScope : AnalysisScope, isRegression : Boolean) : CallGraphBuilder =                           
+                           analysisScope : AnalysisScope, isRegression : Boolean) : CallGraphBuilder[InstanceKey] =
     if (isRegression) FakeMapContextSelector.makeZeroOneFakeMapCFABuilder(options, cache, cha, analysisScope)
     else super.makeCallGraphBuilder(options, cache, cha, analysisScope, isRegression)
   

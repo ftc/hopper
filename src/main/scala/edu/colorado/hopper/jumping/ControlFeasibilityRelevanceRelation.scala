@@ -226,7 +226,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
   def calledFromAllConstructors(n: CGNode): Boolean = {
     val m = n.getMethod
     val declClass = m.getDeclaringClass
-    val allConstructors = declClass.getDeclaredMethods.filter(m => m.isInit).toSet
+    val allConstructors : Set[IMethod] = declClass.getDeclaredMethods.filter(m => m.isInit).toSet
     def isCalledFromAllConstructors(): Boolean = {
       val iter =
         new BFSIterator[CGNode](cg, n) {
@@ -237,7 +237,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
             })
         }
       val visitedConstructors =
-        GraphUtil.bfsIterFold(iter, Set.empty[IMethod], ((s: Set[IMethod], n: CGNode) => s + n.getMethod))
+        GraphUtil.bfsIterFold[CGNode,Set[IMethod]](iter, Set.empty[IMethod], ((s: Set[IMethod], n: CGNode) => s + n.getMethod))
       allConstructors.subsetOf(visitedConstructors)
     }
     // if allConstructors is unit size and m is a constructor, it is the only constructor and thus trivially called by

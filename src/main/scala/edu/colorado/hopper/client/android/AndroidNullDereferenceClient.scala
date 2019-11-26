@@ -216,7 +216,7 @@ class AndroidNullDereferenceClient(appPath : String, androidLib : File, useJPhan
     if (Options.LINE == -2 || Options.LINE == srcLine) {
       // we need the bytecode index to differentiate different derefs at the same line
       val bytecodeIndex = n.getMethod match {
-        case m : IBytecodeMethod => m.getBytecodeIndex(instrIndex)
+        case m : IBytecodeMethod[InstanceKey] => m.getBytecodeIndex(instrIndex)
         case _ => -1
       }
 

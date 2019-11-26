@@ -5,18 +5,19 @@ import java.util.jar.JarFile
 
 import com.ibm.wala.analysis.pointers.HeapGraph
 import com.ibm.wala.classLoader.{BinaryDirectoryTreeModule, IClass, IMethod}
+import com.ibm.wala.dalvik.classLoader.DexIRFactory
 import com.ibm.wala.ipa.callgraph.AnalysisOptions.ReflectionOptions
 import com.ibm.wala.ipa.callgraph._
 import com.ibm.wala.ipa.callgraph.impl.{ArgumentTypeEntrypoint, DefaultEntrypoint}
 import com.ibm.wala.ipa.callgraph.propagation.cfa.ZeroXInstanceKeys
 import com.ibm.wala.ipa.callgraph.propagation.{InstanceKey, PointerAnalysis}
-import com.ibm.wala.ipa.cha.{ClassHierarchy, IClassHierarchy}
+import com.ibm.wala.ipa.cha.{ClassHierarchy, ClassHierarchyFactory, IClassHierarchy}
 import com.ibm.wala.ssa.{InstanceOfPiPolicy, SSAOptions}
 import com.ibm.wala.types.ClassLoaderReference
 import com.ibm.wala.util.config.FileOfClasses
 import edu.colorado.hopper.client.Client._
 import edu.colorado.hopper.executor.{DefaultSymbolicExecutor, SymbolicExecutor, TransferFunctions}
-import edu.colorado.hopper.jumping.{JumpingTransferFunctions, DefaultJumpingSymbolicExecutor, RelevanceRelation}
+import edu.colorado.hopper.jumping.{DefaultJumpingSymbolicExecutor, JumpingTransferFunctions, RelevanceRelation}
 import edu.colorado.hopper.synthesis.{SynthesisSymbolicExecutor, SynthesisTransferFunctions}
 import edu.colorado.thresher.core._
 import edu.colorado.walautil.cg.ImprovedZeroXContainerCFABuilder
@@ -37,9 +38,9 @@ abstract class Client[T](appPath : String, libPath : Option[String], mainClass :
                       isRegression : Boolean = false) {
 
   lazy protected val analysisScope = makeAnalysisScope()
-  lazy protected val cha = ClassHierarchy.make(analysisScope)
+  lazy protected val cha = ClassHierarchyFactory.make(analysisScope)
 
-  def makeAnalysisCache : AnalysisCache = new AnalysisCache
+  def makeAnalysisCache : AnalysisCache = new AnalysisCacheImpl(new DexIRFactory())
 
   // do the actual work of the analysis
   def check : T
@@ -82,7 +83,7 @@ abstract class Client[T](appPath : String, libPath : Option[String], mainClass :
   }
 
   def makeCallGraphBuilder(options : AnalysisOptions, cache : AnalysisCache, cha : IClassHierarchy,
-                           analysisScope : AnalysisScope, isRegression : Boolean) : CallGraphBuilder = {
+                           analysisScope : AnalysisScope, isRegression : Boolean) : CallGraphBuilder[InstanceKey] = {
     assert(options.getMethodTargetSelector() == null, "Method target selector should not be set at this point.")
     assert(options.getClassTargetSelector() == null, "Class target selector should not be set at this point.")
     com.ibm.wala.ipa.callgraph.impl.Util.addDefaultSelectors(options, cha)

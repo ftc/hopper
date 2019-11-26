@@ -33,7 +33,7 @@ class CastCheckingResults(val numSafe : Int, val numMightFail : Int, val numThre
     s"Num safe: $numSafe Num might fail: $numMightFail Thresher proved safe: $numThresherProvedSafe"
 }
 
-class DowncastCheckingClient(appPath : String, libPath : Option[String], mainClass : String, mainMethod : String, 
+class DowncastCheckingClient[IType](appPath : String, libPath : Option[String], mainClass : String, mainMethod : String,
     isRegression : Boolean = false) extends Client[CastCheckingResults](appPath, libPath, mainClass, mainMethod, isRegression) {
 
   def parseCastList(fileName : String) : Set[String] = 
@@ -97,7 +97,7 @@ class DowncastCheckingClient(appPath : String, libPath : Option[String], mainCla
                     // skip casts to primitive types and exception types
                     if (!declaredResultType.isPrimitiveType &&
                         !ClassUtil.isThrowableType(declaredResultType, cha)) {
-                      val bytecodeMethod = node.getMethod().asInstanceOf[IBytecodeMethod]
+                      val bytecodeMethod = node.getMethod().asInstanceOf[IBytecodeMethod[IType]]
                       // bytecode index is the only way we can get different points-to analyses to agree on which casts are the same
                       val bytecodeIndex = bytecodeMethod.getBytecodeIndex(index)
                       val castId = method + ":" + bytecodeIndex

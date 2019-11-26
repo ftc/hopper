@@ -502,8 +502,10 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
       loopHeader : Option[ISSABasicBlock]) : Map[ISSABasicBlock,List[Path]] =
     // experimental: if goal is a switch, pre-constrain the paths. we could consider using this with if's as well
     if (PRE_CONSTRAIN_SWITCHES) {
-      val domGraph = domInfo.getGraph()
+    // TODO:      val domGraph = domInfo.getGraph()
+      val domGraph = domInfo.dominatorTree()
       if (!domGraph.containsNode(blk))
+//      if(???)
         // refuted. this happens when eliminating exceptional control flow makes a node unreachable.
         Map.empty
       else {
@@ -561,7 +563,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
   def executeToJoin(node : ISSABasicBlock, worklist : List[ISSABasicBlock], pathMap : Map[ISSABasicBlock,List[Path]], 
                     domInfo : Dominators[ISSABasicBlock], initCallStackSize : Int, cfg : SSACFG) : List[Path] = {
     if (TRACE) logMethodAndTime("executeToJoin")
-    val domGraph = domInfo.getGraph()
+    val domGraph = domInfo.dominatorTree()
     val filteredWorklist = worklist.filter(node => domGraph.containsNode(node))
     val goal = domInfo.getIdom(node)
 

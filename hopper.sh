@@ -1,6 +1,7 @@
 #!/bin/bash
 
-JAR=target/scala-2.10/hopper_2.10-0.1-one-jar.jar
+#JAR=target/scala-2.10/hopper_2.10-0.1-one-jar.jar
+JAR=target/scala-2.10/Hopper-assembly-0.1.jar
 if [ ! -f $JAR ]; then
     echo "Hopper JAR not found; please run 'sbt one-jar'"
     exit 1

@@ -22,14 +22,21 @@ class Z3Solver extends ModelSolver[AST] {
   override def checkSAT : Boolean = interpretSolverOutput(solver.check)
   
   override def checkSATWithAssumptions(assumes : List[String]) : Boolean =
-    interpretSolverOutput(solver.check(assumes.map(assume => ctx.mkBoolConst(assume)) : _*))
+    interpretSolverOutput(solver.check(assumes.map(assume =>
+      ctx.mkBoolConst(assume)) : _*))
 
   override def push() : Unit = solver.push()
   override def pop() : Unit = solver.pop()
 
   override def getUNSATCore : String =  sys.error("Unimp")
   
-  override def dispose() : Unit =  ctx.dispose()
+  override def dispose() : Unit =  {
+    try {
+      ctx.close()
+    }catch{
+      case _ => //already closed, don't care
+    }
+  }
     
   private def interpretSolverOutput(status : Status) : Boolean = status match {
     case Status.UNSATISFIABLE => false

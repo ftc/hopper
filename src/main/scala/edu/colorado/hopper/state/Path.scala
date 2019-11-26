@@ -289,7 +289,8 @@ class Path(val qry : Qry, var lastBlk : WalaBlock = null,
     jumpMap -= jmpNum 
   }
 
-  def foundWitness : Boolean = qry.foundWitness
+  def foundWitness : Boolean =
+    qry.foundWitness
 
   def initializeStaticFieldsToDefaultValues : Boolean =
     TransferFunctions.initializeStaticFieldsToDefaultValues(qry, this.node)

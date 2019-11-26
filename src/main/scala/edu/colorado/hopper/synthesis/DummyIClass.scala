@@ -87,4 +87,6 @@ private class DummyIClassImpl(clazz : IClass, cha : IClassHierarchy) extends Dum
   override def getClassHierarchy() : IClassHierarchy = clazz.getClassHierarchy()
   
   override def toString : String = "DUMMY_" + ClassUtil.pretty(clazz)
+
+  override def isSynthetic: Boolean = clazz.isSynthetic()
 }

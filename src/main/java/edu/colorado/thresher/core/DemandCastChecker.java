@@ -31,6 +31,8 @@ package edu.colorado.thresher.core;
 
 import com.ibm.wala.classLoader.IBytecodeMethod;
 import com.ibm.wala.classLoader.IClass;
+import com.ibm.wala.classLoader.Language;
+import com.ibm.wala.dalvik.classLoader.DexIRFactory;
 import com.ibm.wala.demandpa.alg.ContextSensitiveStateMachine;
 import com.ibm.wala.demandpa.alg.DemandRefinementPointsTo;
 import com.ibm.wala.demandpa.alg.DemandRefinementPointsTo.PointsToResult;
@@ -60,7 +62,8 @@ import com.ibm.wala.types.MethodReference;
 import com.ibm.wala.types.TypeReference;
 import com.ibm.wala.util.CancelException;
 import com.ibm.wala.util.NullProgressMonitor;
-import com.ibm.wala.util.Predicate;
+//import com.ibm.wala.util.Predicate; //TODO (smeier) where did Predicate go?
+import java.util.function.Predicate;
 import com.ibm.wala.util.ProgressMaster;
 import com.ibm.wala.util.collections.HashSetFactory;
 import com.ibm.wala.util.collections.Pair;
@@ -119,12 +122,13 @@ public class DemandCastChecker {
     throws IllegalArgumentException, CancelException {
     CallGraph retCG = null;
     PointerAnalysis retPA = null;
-    final AnalysisCache cache = new AnalysisCache();
+//    final AnalysisCache cache = new AnalysisCache();
+    final AnalysisCache cache = new AnalysisCacheImpl(new DexIRFactory());
     CallGraphBuilder builder;
     if (CHEAP_CG) {
-      builder = Util.makeZeroCFABuilder(options, cache, cha, scope);
+      builder = Util.makeZeroCFABuilder(Language.JAVA,options, cache, cha, scope);
       // we want vanilla 0-1 CFA, which has one abstract loc per allocation
-      heapModel = Util.makeVanillaZeroOneCFABuilder(options, cache, cha, scope);
+      heapModel = Util.makeVanillaZeroOneCFABuilder(Language.JAVA,options, cache, cha, scope);
     } else {
       builder = Util.makeZeroOneContainerCFABuilder(options, cache, cha, scope);
       heapModel = (HeapModel) builder;

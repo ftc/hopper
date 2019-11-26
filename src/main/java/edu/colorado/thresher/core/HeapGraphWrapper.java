@@ -2,6 +2,7 @@ package edu.colorado.thresher.core;
 
 import com.ibm.wala.analysis.pointers.BasicHeapGraph;
 import com.ibm.wala.ipa.callgraph.CallGraph;
+import com.ibm.wala.ipa.callgraph.propagation.InstanceKey;
 import com.ibm.wala.ipa.callgraph.propagation.PointerAnalysis;
 import com.ibm.wala.util.debug.Assertions;
 import com.ibm.wala.util.intset.BasicNaturalRelation;
@@ -18,7 +19,7 @@ import java.util.List;
  * @author sam
  *
  */
-public class HeapGraphWrapper extends BasicHeapGraph {
+public class HeapGraphWrapper<T extends InstanceKey> extends BasicHeapGraph<T> {
 
   // p -> q pairs to ignore
   private final IBinaryNaturalRelation ignoreEdges;

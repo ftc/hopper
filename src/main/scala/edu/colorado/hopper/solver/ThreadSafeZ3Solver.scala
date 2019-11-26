@@ -32,7 +32,9 @@ class ThreadSafeZ3Solver extends ModelSolver[AST] {
   override def getUNSATCore : String = sys.error("Unimp")
 
   override def dispose() : Unit = this.synchronized {
-    ctx.dispose()
+//    ctx.close()
+    //TODO: no dispose anymore, close causes exceptions
+    println()
   }
 
   private def interpretSolverOutput(status : Status) : Boolean = status match {
