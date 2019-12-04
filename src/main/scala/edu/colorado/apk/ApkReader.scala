@@ -1,7 +1,8 @@
 package edu.colorado.apk
 
-import java.io.File
-import java.nio.file.{Files, Paths}
+import java.io.{File, InputStream}
+import java.net.{URI, URLEncoder}
+import java.nio.file.{Files, Path, Paths}
 import java.util
 
 import com.ibm.wala.classLoader.{IClass, IClassLoader, IMethod, Language}
@@ -14,20 +15,29 @@ import com.ibm.wala.types.{ClassLoaderReference, MethodReference, TypeName, Type
 import com.ibm.wala.dalvik.util.AndroidEntryPointLocator
 import com.ibm.wala.dalvik.util.AndroidEntryPointLocator.LocatorFlags
 import com.ibm.wala.ipa.callgraph.AnalysisOptions.ReflectionOptions
-import com.ibm.wala.ipa.callgraph.impl.Util
+import com.ibm.wala.ipa.callgraph.impl.{DefaultContextSelector, Util}
+import com.ibm.wala.ipa.callgraph.propagation.{InstanceKey, PointerAnalysis}
+import com.ibm.wala.ipa.callgraph.propagation.cfa.ZeroXInstanceKeys
 import com.ibm.wala.ssa.{DefaultIRFactory, IR}
-import brut.androlib.ApkDecoder
-import brut.androlib.res.data.{ResPackage, ResTable}
 import com.ibm.wala.util.debug.UnimplementedError
 import edu.colorado.apk.ApkReader.ApkManifestClasses
+import edu.colorado.walautil.cg.MemoryFriendlyZeroXContainerCFABuilder
+import org.scandroid.util.{AndroidAnalysisContext, CLISCanDroidOptions, ISCanDroidOptions}
 
+import scala.util.matching.Regex
+import collection.JavaConversions
+import sys.process._
 import collection.JavaConverters._
 import scala.annotation.tailrec
 import scala.collection.immutable
-import scala.xml._
+import scala.xml.{Elem, NodeSeq, XML}
 
 class IRWrapper(cha: ClassHierarchy, callGraph: Option[CallGraph],
-                callbacks: List[AndroidEntryPoint], cache: AnalysisCache, manifest: ApkManifestClasses) {
+                callbacks: List[AndroidEntryPoint], cache: AnalysisCache,
+                manifest: ApkManifestClasses,
+                pa : PointerAnalysis[InstanceKey]) {
+  def getCallGraph = callGraph.getOrElse(???)
+  def getPointerAnalysis = pa
 
   def getDirectCallbacks(clazz: IClass) ={
     clazz.getDeclaredMethods.asScala.filter(mostPreciseFmwkOverride(_).isDefined)
@@ -90,7 +100,7 @@ class IRWrapper(cha: ClassHierarchy, callGraph: Option[CallGraph],
     (name, sig_part)
   }
 
-  def findMethod(sig: String, name: String, clazzName: String) = {
+  def findMethod(sig: String, name: String, clazzName: String): IMethod = {
 
     val mref: MethodReference =
       MethodReference.findOrCreate(Language.JAVA, ClassLoaderReference.Application, clazzName, name, sig)
@@ -111,6 +121,26 @@ class IRWrapper(cha: ClassHierarchy, callGraph: Option[CallGraph],
       throw new IllegalArgumentException(s"Class ${clazzName} does not exist")
     }
   }
+  def findMethodFuzzy(sig:String = ".*", name:String = ".*", clazzName: String = ".*"): Set[IMethod] ={
+    def otr(s: String) = new Regex(s)
+    findMethodInSubClassFuzzy(cha.getRootClass,otr(sig),otr(name),otr(clazzName))
+  }
+  def findMethodInSubClassFuzzy(cl: IClass, sig : Regex, name : Regex, clazzName : Regex): Set[IMethod] = {
+    val cur = findInClassMethodFuzzy(cl,sig,name,clazzName)
+    cha.getImmediateSubclasses(cl).asScala.foldLeft(cur)( (acc,v) =>
+      acc.union(findMethodInSubClassFuzzy(v,sig,name,clazzName)))
+  }
+
+  def findInClassMethodFuzzy(cl: IClass, sig : Regex, name : Regex, clazzName : Regex): Set[IMethod] = {
+    clazzName.findFirstIn(cl.getName.toString).map(_ =>
+    cl.getAllMethods().asScala.flatMap((a:IMethod) => {
+      name.findFirstIn(a.getName.toString).flatMap(_=>
+      {
+        sig.findFirstIn(a.getSignature).map(_=>a)
+      })
+    }).toSet).getOrElse(Set())
+  }
+
   def getManifestClasses():Set[IClass] = {
     manifest.activities.map(a => findClass(a))
   }
@@ -126,21 +156,24 @@ class IRWrapper(cha: ClassHierarchy, callGraph: Option[CallGraph],
 }
 
 object ApkReader {
-
+  val apkToolPath:String =
+    Option(System.getenv("APK_TOOL_PATH"))
+      .getOrElse(throw new RuntimeException("APK_TOOL_PATH environment variable is required"))
   val androidJar = new File(System.getenv("ANDROID_HOME") + "/platforms/android-23/android.jar")
   val exclusions = getClass.getResource("/wala_exclusions.txt").getPath
 
   case class ApkManifestClasses(mainPackages: Set[String], activities: Set[String])
 
   def decodeApkManifestClasses(androidApk: File) = {
-    val decoder = new ApkDecoder()
-    decoder.setApkFile(androidApk)
-    val outdir = new File(Files.createTempDirectory("mcGroum_extract_apk").toUri)
-    outdir.delete()
-    decoder.setOutDir(outdir)
-    decoder.decode()
-    val table: ResTable = decoder.getResTable()
-    val manifestFile: Elem = XML.load(outdir.getAbsolutePath + "/" + "AndroidManifest.xml")
+    //Use CLI apk tool to avoid dependency conflict with wala
+
+    val apkLoc:String = androidApk.getAbsolutePath.toString
+    val tmpdirf: Path = Files.createTempDirectory("extract_apk")
+    val outdir: String = tmpdirf.toAbsolutePath.toString
+    val cmd : String = s"java -jar ${apkToolPath} d -o ${outdir} -f --no-src ${apkLoc}"
+    if(( cmd ! ) != 0)
+      throw new RuntimeException(s"Invocation of APKTool failed, (cmd: ${cmd}")
+    val manifestFile: Elem = XML.load(outdir + "/" + "AndroidManifest.xml")
     val activities: immutable.Seq[String] = (manifestFile \\ "activity").flatMap(a => {
       a.attribute("http://schemas.android.com/apk/res/android", "name")
     }).map(a => "L" + a.toString.split("\\.").mkString("/"))
@@ -149,20 +182,22 @@ object ApkReader {
     if (fragments.length > 0) {
       throw new UnimplementedError("XML Fragments")
     }
-    outdir.delete()
-    val mainPackageSet: Set[ResPackage] = table.listMainPackages().asScala.toSet
+    val mf: NodeSeq = manifestFile \\ "manifest"
+    val mainPackageSet = (mf \ "@package").map(_.toString).toSet
+    (new File(outdir)).delete()
     ApkManifestClasses(mainPackageSet.map(a => a.toString.split("\\.").mkString("/")), activities.toSet)
-
   }
 
   def irFromAPK(androidApk: File, androidJarFile: File) = {
 
     // Get reflectively located classes from manifest
-    decodeApkManifestClasses(androidApk)
+//    decodeApkManifestClasses(androidApk)
 
     // Load dalvik code
-    val dalvikScope = makeDalvikScope(null, androidJarFile, androidApk.getAbsolutePath)
+    val dalvikScope: AnalysisScope = makeDalvikScope(null, androidJarFile, androidApk.getAbsolutePath)
     val cha = ClassHierarchyFactory.make(dalvikScope)
+
+
 
     //Generate entrypoints
     val flags = Set[LocatorFlags](
@@ -175,9 +210,46 @@ object ApkReader {
     //TODO: reflection options relevant?
     options.setReflectionOptions(ReflectionOptions.STRING_ONLY)
     val cache: AnalysisCacheImpl = new AnalysisCacheImpl(new DexIRFactory())
+
+
+
     val cgb = Util.makeZeroCFABuilder(Language.JAVA, options, cache, cha, dalvikScope)
     val callGraph: CallGraph = cgb.makeCallGraph(options, null)
-    new IRWrapper(cha, Some(callGraph), eps.asScala.toList, cache, decodeApkManifestClasses(androidApk))
+
+    val defaultInstancePolicy = ZeroXInstanceKeys.ALLOCATIONS | ZeroXInstanceKeys.SMUSH_MANY |
+      ZeroXInstanceKeys.SMUSH_STRINGS | ZeroXInstanceKeys.SMUSH_THROWABLES
+    val cfaBuilder = new MemoryFriendlyZeroXContainerCFABuilder(cha, options, cache, null,
+      null, defaultInstancePolicy)
+    cfaBuilder.makeCallGraph(options)
+    val pa: PointerAnalysis[InstanceKey] = cfaBuilder.getPointerAnalysis
+
+    new IRWrapper(cha, Some(callGraph), eps.asScala.toList, cache, decodeApkManifestClasses(androidApk), null)
+  }
+
+  def getScandroidPA(androidApk: File, androidJarFile: File):IRWrapper = {
+    //TODO: delete this method, makezeroCFABuilder obviously broken
+    val options = new CLISCanDroidOptions(Array("--android-lib", androidJarFile.getAbsolutePath, androidApk.getAbsolutePath),true)
+    val cache: AnalysisCacheImpl = new AnalysisCacheImpl(new DexIRFactory())
+
+    val ctx = new AndroidAnalysisContext(options,exclusions)
+    val cha = ctx.getClassHierarchy
+    val scope = ctx.getScope
+//    val analysisOptions: ISCanDroidOptions = ctx.getOptions
+
+    //Generate entrypoints
+    val flags = Set[LocatorFlags](
+      LocatorFlags.INCLUDE_CALLBACKS,
+      LocatorFlags.CB_HEURISTIC,
+      LocatorFlags.EP_HEURISTIC
+    )
+
+    val eps: util.List[AndroidEntryPoint] = new AndroidEntryPointLocator(flags.asJava).getEntryPoints(cha)
+    val analysisOptions = new AnalysisOptions(scope, eps)
+
+    val cgb2 = AndroidAnalysisContext.makeZeroCFABuilder(analysisOptions, cache, cha, scope,
+      new DefaultContextSelector(analysisOptions, cha), null, List[InputStream]().asJava, null);
+
+    ???
   }
 
   def readAPKCHA(apkloc: File) = {
@@ -188,7 +260,7 @@ object ApkReader {
 
 
     val cha: ClassHierarchy = ClassHierarchyFactory.make(analysisScope)
-    new IRWrapper(cha, None, List(), null, decodeApkManifestClasses(apkloc))
+    new IRWrapper(cha, None, List(), null, decodeApkManifestClasses(apkloc),null)
   }
 
   def typeToAbbr(ty: String): String = {

@@ -25,8 +25,9 @@ object Main {
         else if (Options.CHECK_ARRAY_BOUNDS) List(ArrayBoundsClientTests)
         else if (Options.CHECK_ANDROID_DEREFS) List(AndroidNullDereferenceClientTests)
         else
-          List(AndroidLeakClientTests, DowncastCheckingClientTests, ArrayBoundsClientTests,
-               AndroidNullDereferenceClientTests)
+          List(AndroidNullDereferenceClientTests) //TODO: change back
+//          List(AndroidLeakClientTests, DowncastCheckingClientTests, ArrayBoundsClientTests,
+//               AndroidNullDereferenceClientTests)
       
       val singleTest = Options.TEST
       def runTests(runPiecewise : Boolean = false) : Unit = clientTests.foreach(client => {

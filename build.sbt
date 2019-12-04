@@ -29,4 +29,7 @@ libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.0.5",
 	"com.ibm.wala" % "com.ibm.wala.core" % "1.5.2",
   "com.ibm.wala" % "com.ibm.wala.dalvik" % "1.5.2",
 	"com.twitter" %% "util-collection" % "6.12.1",
-	"com.squareup" % "javawriter" % "2.2.1")
+	"com.squareup" % "javawriter" % "2.2.1",
+	"com.jakewharton.android.repackaged" % "dalvik-dx" % "9.0.0_r3",
+	"org.slf4j" % "slf4j-simple" % "1.7.29",
+	"com.ibm.wala" % "com.ibm.wala.scandroid" % "1.5.2")

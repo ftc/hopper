@@ -34,7 +34,7 @@ class Z3Solver extends ModelSolver[AST] {
     try {
       ctx.close()
     }catch{
-      case _ => //already closed, don't care
+      case _:Throwable => // TODO: Probably a better pattern exists, (old comment: already closed, don't care)
     }
   }
     

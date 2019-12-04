@@ -4,6 +4,7 @@ import java.io.File
 import java.net.URL
 
 import com.ibm.wala.classLoader.IMethod
+import edu.colorado.walautil.ClassUtil
 import org.scalatest.FunSuite
 
 class ApkReaderTest extends FunSuite {
@@ -42,9 +43,12 @@ class ApkReaderTest extends FunSuite {
     assertThrows[IllegalArgumentException](icha.findMethod("()V","foobar", "Landroid/app/Activity"))
   }
   test("Call Graph Contains"){
-    val finishClickNpe: URL =
-      getClass.getResource("/finish_npe.apk")
-    val ir: IRWrapper = ApkReader.irFromAPK(new File(finishClickNpe.getPath), ApkReader.androidJar)
+    val test_0: File = TestUtils.buildApk("test_0")
+    val irw: IRWrapper = ApkReader.irFromAPK(test_0, ApkReader.androidJar)
+    val cg = irw.getCallGraph
+    val createMethod = irw.findMethodFuzzy(name = ".*onCreate.*", clazzName = ".*MainActivity.*")
+    println()
+//    ClassUtil.isLibrary(null)
 
 
 
