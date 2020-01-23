@@ -4,16 +4,16 @@ import com.ibm.wala.analysis.pointers.HeapGraph
 import com.ibm.wala.ipa.callgraph.propagation.{HeapModel, InstanceKey, PointerKey}
 import com.ibm.wala.ipa.callgraph.{CGNode, CallGraph}
 import com.ibm.wala.ipa.cha.IClassHierarchy
-import com.ibm.wala.ssa.SSAInvokeInstruction
+import com.ibm.wala.ssa.{SSAInstruction, SSAInvokeInstruction}
 import com.ibm.wala.util.graph.traverse.{BFSPathFinder, DFS}
 import edu.colorado.hopper.executor.TransferFunctions
 import edu.colorado.hopper.executor.TransferFunctions._
 import edu.colorado.hopper.jumping.JumpingTransferFunctions._
-import edu.colorado.hopper.state.Qry
+import edu.colorado.hopper.state.{PtEdge, Qry}
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.{ClassUtil, GraphUtil}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 
 object JumpingTransferFunctions {
@@ -22,7 +22,7 @@ object JumpingTransferFunctions {
   private val AGGRESSIVE_CALLEE_CONSTRAINT_DROPPING = true
 
   private def defaultGetReachable(cg : CallGraph, n : CGNode) : Set[CGNode] =
-    DFS.getReachableNodes(cg, java.util.Collections.singleton(n)).toSet
+    DFS.getReachableNodes(cg, java.util.Collections.singleton(n)).asScala.toSet
 
   def doesCalleeModifyHeap(callee : CGNode, qry : Qry, rr : RelevanceRelation, cg : CallGraph,
                            getReachable : (CallGraph, CGNode) => Set[CGNode] = defaultGetReachable) : Boolean = {
@@ -38,7 +38,7 @@ object JumpingTransferFunctions {
 
       // purposely getting producers rather than modifiers; we need to drop all constraints with producers in the callee in order to be sound,
       // but it is sound (and more precise) not to drop constraints that can cause a refutation in the callee
-      val constraintModMap = rr.getConstraintModifierMap(qry, ignoreLocalConstraints = true)
+      val constraintModMap: Map[PtEdge, List[(CGNode, SSAInstruction)]] = rr.getConstraintModifierMap(qry, ignoreLocalConstraints = true)
       val kReachable = GraphUtil.kBFS(cg, callee, k)
 
       // TODO: could do something slightly more consistent here like only dropping when no nodes are k-reachable,
@@ -50,7 +50,8 @@ object JumpingTransferFunctions {
         val node = pair._1
         calleeReachable.contains(node) && { // node is reachable from callee
           val isKReachable = kReachable.contains(node)
-          if (!isKReachable && qry.heapConstraints.contains(entry._1) &&
+          val ptEdge: PtEdge = entry._1
+          if (!isKReachable && qry.heapConstraints.exists(_.equals(ptEdge)) &&
               //rr.getProducers(entry._1, qry).exists(pair => pair._1 == node))
               rr.getProducers(entry._1, qry).exists(pair => pair._1 == node))
             // if node not k-reachable from callee AND node contains a producer statement for the current constraint, the node is relevant
@@ -59,7 +60,7 @@ object JumpingTransferFunctions {
             println(s"callee is relevant: ${ClassUtil.pretty(callee)} because transitive callee is relevant: ${ClassUtil.pretty(node)}")
             val finder = new BFSPathFinder(cg, callee, node)
             val path = finder.find()
-            println("Path is: "); path.foreach(n => println(ClassUtil.pretty(n)))
+            println("Path is: "); path.asScala.foreach(n => println(ClassUtil.pretty(n)))
           }
           // if isKReachable is true, the callee is relevant and we will exit via the double exists above
           isKReachable
@@ -75,7 +76,7 @@ object JumpingTransferFunctions {
           print("Instr "); ClassUtil.pp_instr(pair._2, node.getIR()); println(s" relevant to constraint ${entry._1}")
           val finder = new BFSPathFinder(cg, callee, node)
           val path = finder.find()
-          println("Path is: "); path.foreach(n => println(ClassUtil.pretty(n)))
+          println("Path is: "); path.asScala.foreach(n => println(ClassUtil.pretty(n)))
         }
         rel
       }))
@@ -97,7 +98,7 @@ object JumpingTransferFunctions {
             val finder = new BFSPathFinder(cg, callee, snk._1)
             val path = finder.find()
             println("Path is: ");
-            path.foreach(n => println(ClassUtil.pretty(n)))
+            path.asScala.foreach(n => println(ClassUtil.pretty(n)))
           }
         case None => ()
       }

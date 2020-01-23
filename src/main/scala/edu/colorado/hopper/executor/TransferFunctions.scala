@@ -21,7 +21,7 @@ import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.Types._
 import edu.colorado.walautil.{IRUtil, Timer, ClassUtil, Util}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object TransferFunctions {  
   def DEBUG = Options.DEBUG
@@ -31,7 +31,7 @@ object TransferFunctions {
    def initializeStaticFieldsToDefaultValues(qry : Qry, node : CGNode) : Boolean = {
     require(node.getMethod().isClinit() || node.getMethod().isSynthetic(), "Expecting clinit method, got " + ClassUtil.pretty(node))
     val method = node.getMethod()
-    val staticFlds = if (method.isClinit()) method.getDeclaringClass().getDeclaredStaticFields().toSet
+    val staticFlds = if (method.isClinit()) method.getDeclaringClass().getDeclaredStaticFields().asScala.toSet
     else // node is fakeWorldClinit rather than any particular class initializer.
       // WALA doesn't necessarily generate a clinit method for all clxasses, but we still need to initialize the
       // static fields of these classes to their default values. we accomplish this by calling this method
@@ -1796,13 +1796,13 @@ class TransferFunctions(val cg : CallGraph, val hg : HeapGraph[InstanceKey], _hm
   // if dropConstraints is true, drops constraints produceable by callee -- otherwise, returns true if callee is relevant to qry
   private def dropCallConstraintsOrCheckCallRelevant(callee : CGNode, heapConstraints : MSet[HeapPtEdge],
                                                      dropConstraints : Boolean, loopDrop : Boolean, qry : Qry) : Boolean = {
-    val modKeys = modRef.get(callee).toSet // set of pointer keys modified by the callee function
+    val modKeys = modRef.get(callee).asScala.toSet // set of pointer keys modified by the callee function
     val staticFlds = // static fields declared by the callee function (if any)
-      if (callee.getMethod().isClinit()) callee.getMethod().getDeclaringClass().getDeclaredStaticFields().toSet else Set.empty[IField]
+      if (callee.getMethod().isClinit()) callee.getMethod().getDeclaringClass().getDeclaredStaticFields().asScala.toSet else Set.empty[IField]
     val reachableInits = { // constructors reachable from the callee function       
       val reachable = DFS.getReachableNodes(cg, java.util.Collections.singleton(callee))
       assert(reachable.contains(callee))
-      reachable.foldLeft (Set.empty[IClass]) ((s, callee) => if (!callee.getMethod.isInit()) s
+      reachable.asScala.foldLeft (Set.empty[IClass]) ((s, callee) => if (!callee.getMethod.isInit()) s
         else s + callee.getMethod().getDeclaringClass()) 
     }
 
@@ -2020,7 +2020,7 @@ class TransferFunctions(val cg : CallGraph, val hg : HeapGraph[InstanceKey], _hm
         
         val targets = callee match {
           case Some(callee) => Iterable(callee)
-          case None => cg.getPossibleTargets(n, i.getCallSite()).toIterable
+          case None => cg.getPossibleTargets(n, i.getCallSite()).asScala.toIterable
         }
         // drop constraints from all instructions in each feasible method call according to okClasses
         targets.foreach(n => {
@@ -2041,11 +2041,11 @@ class TransferFunctions(val cg : CallGraph, val hg : HeapGraph[InstanceKey], _hm
   // TODO: for maximal precision, we might want to check if System.exit() can be called transitively. don't want
   // to try this without evaluating it, though
   def mayDirectlyCallExitMethod(callee : CGNode) : Boolean =
-    cg.getSuccNodes(callee).exists(n => n.getMethod.getReference == Path.SYSTEM_EXIT)
+    cg.getSuccNodes(callee).asScala.exists(n => n.getMethod.getReference == Path.SYSTEM_EXIT)
   
   def dropLoopWriteableConstraints(qry : Qry, loopHead : ISSABasicBlock, n : CGNode) : Unit = {
     if (DEBUG) println("Doing loop drop for " + qry.id + " head " + loopHead)
-    val loopInstrs = edu.colorado.thresher.core.WALACFGUtil.getInstructionsInLoop(loopHead.asInstanceOf[SSACFG#BasicBlock], n.getIR()).toSet
+    val loopInstrs = edu.colorado.thresher.core.WALACFGUtil.getInstructionsInLoop(loopHead.asInstanceOf[SSACFG#BasicBlock], n.getIR()).asScala.toSet
     dropConstraintsFromInstructions(loopInstrs, n, qry, callee = None,
       // do *not* flip loopDrop to true -- it causes problems
       loopDrop = false)

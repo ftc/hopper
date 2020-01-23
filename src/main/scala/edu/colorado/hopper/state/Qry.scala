@@ -14,7 +14,7 @@ import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.Types.MSet
 import edu.colorado.walautil.{CFGUtil, IRUtil, Util}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object Qry {
   private def DEBUG = Options.DEBUG
@@ -481,7 +481,7 @@ class Qry(val heapConstraints : MSet[HeapPtEdge], val pureConstraints : MSet[Pur
     val qryFields = this.getAllFields()
     def localReadsFromQueryFld() : Boolean = {
       val localNum = local.getValueNumber
-      n.getIR.iterateAllInstructions().exists(i => i match {
+      n.getIR.iterateAllInstructions().asScala.exists(i => i match {
         case i : SSAGetInstruction => i.getDef() == localNum && qryFields.contains(cha.resolveField(i.getDeclaredField))
         case _ => false
       })
@@ -490,8 +490,8 @@ class Qry(val heapConstraints : MSet[HeapPtEdge], val pureConstraints : MSet[Pur
     def lpkFieldsAndQueryFieldsOverlap() : Boolean = {
       // get the fields that point at the object(s) the local pointer key points at
       val lpkFields =
-        hg.getSuccNodes(local).foldLeft (Set.empty[IField]) ((s, k) => {
-          hg.getPredNodes(k).foldLeft(s)((s, k) => k match {
+        hg.getSuccNodes(local).asScala.foldLeft (Set.empty[IField]) ((s, k) => {
+          hg.getPredNodes(k).asScala.foldLeft(s)((s, k) => k match {
             case k: InstanceFieldKey => s + k.getField
             case k: StaticFieldKey => s + k.getField
             case _ => s

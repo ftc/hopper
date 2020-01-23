@@ -13,7 +13,7 @@ import edu.colorado.hopper.state.{ObjVar, PtEdge, Qry}
 import edu.colorado.thresher.core.{DemandCastChecker, Options}
 import edu.colorado.walautil._
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
+import scala.jdk.CollectionConverters._
 import scala.io.Source
 
 object DowncastCheckingClient {
@@ -62,7 +62,7 @@ class DowncastCheckingClient[IType](appPath : String, libPath : Option[String], 
           DemandCastChecker.makeDemandPointerAnalysis(analysisScope, walaRes.cha.asInstanceOf[ClassHierarchy], options)
         val fails = DemandCastChecker.findFailingCasts(demandPair.fst.getBaseCallGraph(), demandPair.snd, demandPair.fst)
         println("====Done with demand cast checking====")
-        fails.toSet
+        fails.asScala.toSet
       } else Set.empty[String]
 
     // see if a list of cast queries was specified on the command line
@@ -76,8 +76,8 @@ class DowncastCheckingClient[IType](appPath : String, libPath : Option[String], 
     val cha = walaRes.cha
     val pa = hg.getPointerAnalysis
     // DON'T CHANGE THE COUNTING SCHEME HERE! IT WILL MAKE REGRESSIONS FAIL
-    val (numSafe, numMightFail, numThresherProvedSafe, total) = 
-      cg.foldLeft (0, 0, 0, 0) ((quad, node) => {
+    val (numSafe, numMightFail, numThresherProvedSafe, total):(Int,Int,Int,Int) =
+      cg.asScala.foldLeft (0, 0, 0, 0) ((quad:(Int,Int,Int,Int), node) => {
         val declaringClass = node.getMethod().getReference().getDeclaringClass()
         // skip library classes
         if (!declaringClass.getClassLoader().equals(ClassLoaderReference.Primordial)) {
@@ -110,7 +110,7 @@ class DowncastCheckingClient[IType](appPath : String, libPath : Option[String], 
                       val badKeys =
                         if (declaredResultClass == null) Set.empty[InstanceKey] // this can happen because of exclusions
                         else
-                          pa.getPointsToSet(castPk).filter(key => !cha.isAssignableFrom(declaredResultClass,
+                          pa.getPointsToSet(castPk).asScala.filter(key => !cha.isAssignableFrom(declaredResultClass,
                                                                                         key.getConcreteType()))
 
                       badKeys.foreach(k => assert(k.getConcreteType() != declaredResultClass, "types " + declaredResultClass + " the same!"))

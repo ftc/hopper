@@ -17,7 +17,7 @@ object MinSet {
 }
 
 // TODO: I'm sure this could be much more efficient...
-class MinSet[T <: Concretizable](val paths : Set[T] = Util.makeISet[T]) extends Set[T] {   
+class MinSet[T <: Concretizable](val paths : Set[T] = Util.makeISet[T]) {
   
   /**
    * add @param newPath to the set if it is incomparable to all paths in the set, or if it entails
@@ -42,13 +42,13 @@ class MinSet[T <: Concretizable](val paths : Set[T] = Util.makeISet[T]) extends 
    */
   def |=(path : T) : Boolean = paths.forall(p => !(path |= p))
     
-  override def -(elem: T) : MinSet[T] = new MinSet[T](paths - elem)
-  override def toList : List[T] = paths.toList
-  override def contains(key: T) : Boolean = paths.contains(key)
-  override def exists(t : T => Boolean) : Boolean = paths.exists(t)
+  def -(elem: T) : MinSet[T] = new MinSet[T](paths - elem)
+  def toList : List[T] = paths.toList
+  def contains(key: T) : Boolean = paths.contains(key)
+  def exists(t : T => Boolean) : Boolean = paths.exists(t)
         
-  override def iterator: Iterator[T] = paths.iterator
-  override def isEmpty : Boolean = paths.isEmpty
-  override def size : Int = paths.size
+  def iterator: Iterator[T] = paths.iterator
+  def isEmpty : Boolean = paths.isEmpty
+  def size : Int = paths.size
   override def toString = paths.toString
 }

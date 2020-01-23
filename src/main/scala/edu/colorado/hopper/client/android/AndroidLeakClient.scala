@@ -19,7 +19,8 @@ import edu.colorado.walautil.{ClassUtil, LoopUtil, Timer, Util}
 import edu.colorado.walautil.WalaAnalysisResults
 import edu.colorado.thresher.core.{HeapGraphWrapper, Options}
 
-import scala.collection.JavaConversions.{asJavaCollection, asScalaBuffer, asScalaSet, bufferAsJavaList, collectionAsScalaIterable, iterableAsScalaIterable, mutableSetAsJavaSet, seqAsJavaList}
+import scala.collection.mutable
+import scala.jdk.CollectionConverters._
 
 class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[String], mainClass : String,
                         mainMethod : String, isRegression : Boolean = false)
@@ -55,20 +56,20 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
    
       // find static fields and @noStaticRef annotations of each class
       val annotatedClasses = 
-        cha.foldLeft (targetClasses) ((l : List[IClass], c : IClass) => {
+        cha.asScala.foldLeft (targetClasses) ((l : List[IClass], c : IClass) => {
           if (!isRegression || c.getName().toString().contains(mainClass)) {
             // populate static fields
-            staticFields.addAll(c.getAllStaticFields())
+            staticFields.addAll(c.getAllStaticFields().asScala)
           }
           val supportedAnnotsFilter = (a : Annotation) => a.getType().equals(NO_STATIC_REF)
-          c.getAnnotations().find(supportedAnnotsFilter) match { 
+          c.getAnnotations().asScala.find(supportedAnnotsFilter) match {
             case Some(_) => c :: l
             case _ => l
           }
         })
       // compute sub-classes of all annotated classes
-      annotatedClasses.foldLeft (Set.empty[IClass]) ((s : Set[IClass], c : IClass) =>   
-        s + c ++ cha.computeSubClasses(c.getReference()))
+      annotatedClasses.foldLeft (Set.empty[IClass]) ((s : Set[IClass], c : IClass) =>
+        s + c ++ cha.computeSubClasses(c.getReference()).asScala.toSet)
     }
       
     // filter out fields in the blackList
@@ -97,13 +98,13 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
     import walaRes._
     // find nodes in the heap graph that are reachable from f and have the types of one of the classes in snkClass
     val filter = { node : Object => 
-      (node.isInstanceOf[ConcreteTypeKey] && snkClasses.contains(node.asInstanceOf[ConcreteTypeKey].getConcreteType())) ||
-      (node.isInstanceOf[AllocationSiteInNode] && snkClasses.contains(node.asInstanceOf[AllocationSiteInNode].getConcreteType()))
+      (node.isInstanceOf[ConcreteTypeKey] && snkClasses.exists(_.equals(node.asInstanceOf[ConcreteTypeKey].getConcreteType()))) ||
+      (node.isInstanceOf[AllocationSiteInNode] && snkClasses.exists(_.equals(node.asInstanceOf[AllocationSiteInNode].getConcreteType())))
     }    
     staticFields.flatMap((f : IField) => {
       val ptrKey = hm.getPointerKeyForStaticField(f)
       if (hg.getNumber(ptrKey) != -1) {
-        DFS.getReachableNodes(hg.asInstanceOf[Graph[Object]], List(ptrKey)).toSet
+        DFS.getReachableNodes(hg.asInstanceOf[Graph[Object]], List(ptrKey).asJava).asScala.toSet
         .filter(filter)
         // (static field, node that may leak via field) pair
         .map((node : Any) => (ptrKey, node.asInstanceOf[InstanceKey]))
@@ -133,7 +134,7 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
     val hg = walaRes.hg
     var witnessedCount = 0
     val hgWrapper = hg.asInstanceOf[HeapGraphWrapper[InstanceKey]]
-    var errorPath = edu.colorado.thresher.core.AndroidLeakClient.findNewErrorPath(hgWrapper, srcKey, snkKey, cha)
+    var errorPath: mutable.Seq[AnyRef] = edu.colorado.thresher.core.AndroidLeakClient.findNewErrorPath(hgWrapper, srcKey, snkKey, cha).asScala
     if (errorPath == null) {
       if (DEBUG) println("Edges refuted on previous error preclude us from finding path! this error infeasible")
       return true
@@ -145,8 +146,8 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
       var snkIndex = 0
       var fldKey : PointerKey = null
       var newPath = false
-      while (srcIndex < errorPath.size() && !newPath) {
-        val snk = errorPath.get(srcIndex)
+      while (srcIndex < errorPath.size && !newPath) {
+        val snk = errorPath(srcIndex)
         if (snk.isInstanceOf[PointerKey] && !(snk.isInstanceOf[StaticFieldKey])) {
           // src is intermediate point in points-to edge; either instance field or array contents
           fldKey = snk match {
@@ -161,7 +162,7 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
             case other => sys.error("Unexpected type for snk " + other)
           }
           
-          val witnessMe = errorPath.get(snkIndex) match {
+          val witnessMe = errorPath(snkIndex) match {
             case k : StaticFieldKey => PtEdge.make(k, snkVal)
             case k : InstanceKey =>
               val fld = Fld.make(fldKey, cha)
@@ -188,7 +189,7 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
               }
             }
             if (witnessed) {
-              if (DEBUG) println("Successfully produced " + witnessMe + "; done with " + witnessedCount + " of " + errorPath.size())
+              if (DEBUG) println("Successfully produced " + witnessMe + "; done with " + witnessedCount + " of " + errorPath.size)
               witnessedCount += 1
               producedEdges.add(witnessMe)
             } else {
@@ -199,10 +200,10 @@ class AndroidLeakClient(appPath : String, androidJar : File, libPath : Option[St
               hgWrapper.addIgnoreEdge(fldKey, snk)
               if (DEBUG) println("Successfully refuted edge " + witnessMe + "; now trying to find error path  without it")
               errorPath =
-                edu.colorado.thresher.core.AndroidLeakClient.findNewErrorPath(hgWrapper, srcKey, snkKey, cha)
+                edu.colorado.thresher.core.AndroidLeakClient.findNewErrorPath(hgWrapper, srcKey, snkKey, cha).asScala
               
               if (errorPath != null) {
-                if (DEBUG) println("Refuted edge, but err path still exists; size " + errorPath.size())
+                if (DEBUG) println("Refuted edge, but err path still exists; size " + errorPath.size)
                 errorPath = errorPath.reverse
                 newPath = true
               } else {

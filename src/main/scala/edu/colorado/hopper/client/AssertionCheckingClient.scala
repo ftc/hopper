@@ -2,8 +2,8 @@ package edu.colorado.hopper.client
 
 import java.io.File
 import java.io.FilenameFilter
-import scala.collection.JavaConversions._
-import scala.sys.process._
+import scala.jdk.CollectionConverters._
+import scala.sys.process.{Process,ProcessLogger}
 import com.ibm.wala.classLoader.IMethod
 import com.ibm.wala.ipa.callgraph.CallGraph
 import com.ibm.wala.ipa.callgraph.Entrypoint
@@ -55,7 +55,7 @@ class AssertionCheckingClient(appPath : String, libPath : Option[String], mainCl
       (0 to m.getNumberOfParameters() - 1).exists(i => m.getParameterType(i).getName() == TypeReference.Boolean.getName())
 
     
-    cg.foldLeft (Set.empty[MethodSignature]) ((s, n) => {
+    cg.asScala.foldLeft (Set.empty[MethodSignature]) ((s, n) => {
       val method = n.getMethod()
       if ((isAsserty(method.getName().toString()) || isAsserty(method.getDeclaringClass().getName().toString())) &&
           hasBooleanParam(method))
@@ -71,7 +71,7 @@ class AssertionCheckingClient(appPath : String, libPath : Option[String], mainCl
     println(s"Found ${assertMethods.size} custom assert methods: ")
     assertMethods.foreach(m => println(m))
 
-    cg.foldLeft (List.empty[Assertion]) ((asserts, n) => if (!ClassUtil.isLibrary(n)) n.getIR() match {
+    cg.asScala.foldLeft (List.empty[Assertion]) ((asserts, n) => if (!ClassUtil.isLibrary(n)) n.getIR() match {
       case null => asserts
       case ir => 
         ir.getInstructions().view.zipWithIndex.foldLeft (asserts) ((asserts, pair) => pair._1 match {
@@ -232,9 +232,10 @@ object AssertionCheckingClientTests extends ClientTests {
              // it would be cleanest to have the synthesized code declare a boolean type method that try/catches the AssertionFailedException and returns true iff the assertion fails dynamically
              println("Compiled generated test.")
              var output = ""
-             val cmd = "java -cp " + ".:bin/:" + binDir + ":../thresher/bin " + synthesizedClasses.head
+             val cmd = Process(Seq("java -cp " + ".:bin/:" + binDir + ":../thresher/bin " + synthesizedClasses.head),
+               new File("."))
              // run cmd in shell and collect stderr/stdout
-             cmd lines_! ProcessLogger(line => output += line)
+             cmd.!(ProcessLogger(line => output += line))
              
              if (output != null && output.contains(ASSERTION_FAILURE)) { // running generated test triggered assertion failure
                println("Generated test caused assertion failure!")

@@ -6,7 +6,8 @@ import edu.colorado.hopper.executor.DefaultSymbolicExecutor
 import edu.colorado.hopper.state.Path
 import edu.colorado.walautil.ClassUtil
 
-import scala.collection.JavaConversions.asScalaSet
+import scala.collection.mutable
+import scala.jdk.CollectionConverters._
 
 case class InvokeSynthesizerException(path : Path) extends Exception
 
@@ -26,14 +27,14 @@ class SynthesisSymbolicExecutor(tf : SynthesisTransferFunctions) extends Default
   
   override def enterCallee(paths : List[Path], i : SSAInvokeInstruction) : (List[Path], List[Path]) = {
     val caller = paths.head.node    
-    val callees = cg.getPossibleTargets(caller, i.getCallSite())
+    val callees: mutable.Set[CGNode] = cg.getPossibleTargets(caller, i.getCallSite()).asScala
     // TODO: decision point here if we just do this when callees are empty, we are limiting our synthesis to the case where there are *no*
     // implementations of the interface that can flow to this call site. if we want to be more aggressive with our synthesis, we can 
     // uncomment the two lines below and thus allow synthesis for interface types that do have concrete implementations flowing to this
     // call site
     // val declaringClass = cha.lookupClass(i.getCallSite().getDeclaredTarget().getDeclaringClass())
     //if (declaringClass.isInterface() || callees.isEmpty()) {
-    if (callees.isEmpty() || (callees.size() == 1 && callees.iterator().next().getMethod().isInstanceOf[DummyIMethod])) {
+    if (callees.isEmpty || callees.size == 1 && callees.iterator.next().getMethod().isInstanceOf[DummyIMethod]) {
       // add constraints on the implementation of the interface method
       paths.foreach(p => tf.visitInterfaceMethod(i, p.qry, p.node))
       (Nil, paths)

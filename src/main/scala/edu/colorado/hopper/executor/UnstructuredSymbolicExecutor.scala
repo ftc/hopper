@@ -1,5 +1,7 @@
 package edu.colorado.hopper.executor
 
+import java.util
+
 import com.ibm.wala.analysis.typeInference.TypeInference
 import com.ibm.wala.cfg.ControlFlowGraph
 import com.ibm.wala.classLoader.IClass
@@ -10,15 +12,17 @@ import com.ibm.wala.shrikeBT.IConditionalBranchInstruction.Operator.EQ
 import com.ibm.wala.ssa._
 import com.ibm.wala.types.TypeReference
 import com.ibm.wala.util.graph.dominators.Dominators
-import com.twitter.util.LruMap
+//import com.twitter.util.LruMap
+import org.apache.commons.collections4.map.LRUMap
+import scala.jdk.CollectionConverters._
 import edu.colorado.hopper.executor.UnstructuredSymbolicExecutor._
 import edu.colorado.hopper.state._
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.Types.WalaBlock
 import edu.colorado.walautil._
 
-import scala.collection.JavaConversions.{asScalaBuffer, asScalaIterator, asScalaSet, collectionAsScalaIterable, mapAsJavaMap}
-
+//import scala.collection.JavaConversions.{asScalaBuffer, asScalaIterator, asScalaSet, collectionAsScalaIterable, mapAsJavaMap}
+import scala.jdk.CollectionConverters._
 object UnstructuredSymbolicExecutor {
   protected[executor] def DEBUG = Options.DEBUG
   protected[executor] def MIN_DEBUG = DEBUG
@@ -48,10 +52,19 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
   def cg : CallGraph = tf.cg
   def cha : IClassHierarchy = tf.cha
   
-  val domCache = new LruMap[ControlFlowGraph[SSAInstruction,ISSABasicBlock],Dominators[ISSABasicBlock]](25)
-  def getDominators(cfg : ControlFlowGraph[SSAInstruction,ISSABasicBlock]) : Dominators[ISSABasicBlock] =
-    domCache.getOrElseUpdate(cfg, Dominators.make(cfg, cfg.entry))
-  
+  val domCache = new LRUMap[ControlFlowGraph[SSAInstruction,ISSABasicBlock],Dominators[ISSABasicBlock]](25)
+  def getDominators(cfg : ControlFlowGraph[SSAInstruction,ISSABasicBlock]) : Dominators[ISSABasicBlock] = {
+    //TODO: com.twitter.util.LruMap depricated so swapped out org.apache.commons.collections4.map.LRUMap
+    //domCache.getOrElseUpdate(cfg, Dominators.make(cfg, cfg.entry))
+    if(!domCache.containsKey(cfg)) {
+      val value = Dominators.make(cfg, cfg.entry)
+      domCache.put(cfg,value)
+      value
+    }else{
+      domCache.get(cfg)
+    }
+  }
+
   def cleanup() : Unit = {
     clearInvariantMaps
     domCache.clear
@@ -120,7 +133,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
           val retPaths = handleEmptyCallees(okPaths, i, caller)
           (List.empty[Path], retPaths)
         } else paths.foldLeft (List.empty[Path], List.empty[Path]) ((pair, p) =>
-          callees.foldLeft (pair) ((pair, callee) => {
+          callees.asScala.foldLeft (pair) ((pair, callee) => {
             val calleePath = p.deepCopy
             if (PRINT_IR) println(callee.getIR())
             val (enterPaths, skipPaths) = pair
@@ -208,9 +221,10 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
       val ir = node.getIR
       val cfg = ir.getControlFlowGraph()
       val blk = p.blk
-      val instrs = blk.asInstanceOf[SSACFG#BasicBlock].getAllInstructions()
-
-      (instrs.view.zipWithIndex.reverse foldLeft List(p)) { case (paths : List[Path], (instr : SSAInstruction, index : Int)) =>
+      val instrs = blk.asInstanceOf[SSACFG#BasicBlock].getAllInstructions().asScala
+      //TODO: removed .view. from this thing, make sure it doesn't add too much runtime
+      //Note: Had to remove view because views can no longer be reversed
+      (instrs.zipWithIndex.reverse foldLeft List(p)) { case (paths : List[Path], (instr : SSAInstruction, index : Int)) =>
         if (index <= pathIndex) {
           if (MIN_DEBUG) { print("INSTR : "); ClassUtil.pp_instr(instr, node.getIR()); println }          
           if (DEBUG && paths.size > 1) println("Have " + paths.size + " paths")
@@ -227,7 +241,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
               })
             }
 
-            val thrownExceptionTypes = instr.getExceptionTypes.map(typ => cha.lookupClass(typ))
+            val thrownExceptionTypes = instr.getExceptionTypes.asScala.map(typ => cha.lookupClass(typ))
             instr match {
               case i : SSAThrowInstruction => // throw e
                 // throw is a special case since the WALA docs say getExceptionTypes doesn't work for throw
@@ -263,7 +277,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
     }
   }
   
-  def getCallers(cg : CallGraph, callee : CGNode) : Iterable[CGNode] = cg.getPredNodes(callee).toIterable
+  def getCallers(cg : CallGraph, callee : CGNode) : Iterable[CGNode] = cg.getPredNodes(callee).asScala.iterator.to(Iterable)
   
   def returnFromCall(p : Path) : Iterable[Path] = {
     val callee = p.callStack.top.node // get rid of current stack frame
@@ -360,7 +374,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
     
     
   def getInvariantMaps : List[InvariantMap[_ <: Any]] = List(callerInvMap, loopInvMap)
-  def cloneInvariantMaps : List[InvariantMap[_ <: Any]] = getInvariantMaps.map(invMap => invMap.clone)
+  def cloneInvariantMaps : List[InvariantMap[_ <: Any]] = ??? //getInvariantMaps.map(invMap => invMap.clone) // TODO: refactor Invariant Map
   // replace the current invariant maps with the ones in newMaps
   def resetInvariantMaps(newMaps : List[InvariantMap[_ <: Any]]) : Unit = {
     this.callerInvMap = newMaps(0).asInstanceOf[InvariantMap[(CGNode,CGNode)]] 
@@ -414,15 +428,15 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
 
     if (Options.SOUND_EXCEPTIONS && startBlk.isCatchBlock) {
       // if we are going backward from a catch block, mark all paths as exceptional
-      val caughtExceptionTypes = startBlk.getCaughtExceptionTypes.toSet
+      val caughtExceptionTypes = startBlk.getCaughtExceptionTypes.asScala.toSet
       if (DEBUG) println(s"setting paths to exceptional; types are $caughtExceptionTypes")
       instrPaths.foreach(p => p.setExceptionTypes(caughtExceptionTypes, cha))
       if (DEBUG && !caughtExceptionTypes.isEmpty) instrPaths.foreach(p => assert(p.isExceptional))
     }
 
     val preds =
-      if (Options.SOUND_EXCEPTIONS && instrPaths.exists(p => p.isExceptional)) cfg.getPredNodes(startBlk).toList
-      else cfg.getNormalPredecessors(startBlk).toList
+      if (Options.SOUND_EXCEPTIONS && instrPaths.exists(p => p.isExceptional)) cfg.getPredNodes(startBlk).asScala.toList
+      else cfg.getNormalPredecessors(startBlk).asScala.toList
     if (DEBUG) println("done with " + startBlk + ", getting preds")
       
     // dropping constraints here ensures that we never carry on the loop condition. this is desirable for many clients
@@ -465,7 +479,7 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
         if (DEBUG) { print(" > 1 pred "); preds.foreach(p => print(s" BB${p.getNumber()}")); println }
         val p = instrPaths.head
         val blk = p.blk
-        val phis = p.blk.iteratePhis().toIterable
+        val phis = p.blk.iteratePhis().asScala.iterator.to(Iterable)
 
         // push all paths up to the join
         val initCallStackSize = p.callStackSize
@@ -672,16 +686,16 @@ trait UnstructuredSymbolicExecutor extends SymbolicExecutor {
          val pSet = paths.toSet
          if (paths.size != pSet.size) println("got reduction to " + pSet.size + " down from " + paths.size + " by switching to set")
        }
-       val switchMap = getSwitchMap(switch, paths.head.node.getIR())
+       val switchMap: Map[Int, List[SSAConditionalBranchInstruction]] = getSwitchMap(switch, paths.head.node.getIR())
        paths.foldLeft (List.empty[Path]) ((lst, p) => {
-       val lastBlkNum = cfg.getNumber(p.lastBlk)
+       val lastBlkNum: Int = cfg.getNumber(p.lastBlk)
        if (lastBlkNum == defaultNum) {
          val copy = p.deepCopy
          // if we came from default block, need to add negation of all other cases
          if (switchMap.values.flatten.forall(cond => copy.addConstraintFromSwitch(cond, tf, negated = true))) copy :: lst
          else lst // refuted by adding switch constraint
        } else {
-         assert (switchMap.containsKey(lastBlkNum),
+         assert (switchMap.contains(lastBlkNum),
                   s"switchMap $switchMap does not have an entry for $lastBlkNum ir ${p.node.getIR()}")
          // otherwise, fork a case for each possible value that could have sent us to this block
          switchMap(lastBlkNum).foldLeft (lst) ((lst, cond) => {

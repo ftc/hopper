@@ -23,7 +23,7 @@ import edu.colorado.thresher.core._
 import edu.colorado.walautil.cg.ImprovedZeroXContainerCFABuilder
 import edu.colorado.walautil._
 
-import scala.collection.JavaConversions.{asJavaCollection, collectionAsScalaIterable, iterableAsScalaIterable}
+import scala.jdk.CollectionConverters._
 
 object Client {
   protected val DEBUG = false
@@ -98,7 +98,8 @@ abstract class Client[T](appPath : String, libPath : Option[String], mainClass :
   }
 
   def makeOptions(analysisScope : AnalysisScope, entrypoints : Iterable[Entrypoint]) : AnalysisOptions = {
-    val collectionEntrypoints : java.util.Collection[_ <: Entrypoint] = entrypoints
+    val javaEntryPoints = entrypoints.toList.asJava
+    val collectionEntrypoints : java.util.Collection[_ <: Entrypoint] = javaEntryPoints
     val options = new AnalysisOptions(analysisScope, collectionEntrypoints)
     // turn off handling of Method.invoke(), which dramatically speeds up pts-to analysis
     options.setReflectionOptions(ReflectionOptions.NO_METHOD_INVOKE)
@@ -149,8 +150,8 @@ abstract class Client[T](appPath : String, libPath : Option[String], mainClass :
       methods.foldLeft (entrypoints) ((entrypoints, m) =>
         if (isEntrypoint(m, cha, mainMethod)) mkEntrypoint(m, cha) :: entrypoints else entrypoints)
 
-    cha.foldLeft (List.empty[Entrypoint]) ((entrypoints, c) =>
-      if (isEntrypointClass(c, analysisScope, mainClass)) addMethodsToEntrypoints(c.getDeclaredMethods(), entrypoints)
+    cha.asScala.foldLeft (List.empty[Entrypoint]) ((entrypoints, c) =>
+      if (isEntrypointClass(c, analysisScope, mainClass)) addMethodsToEntrypoints(c.getDeclaredMethods().asScala, entrypoints)
       else entrypoints
     )
   }

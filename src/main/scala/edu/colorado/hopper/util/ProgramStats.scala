@@ -10,7 +10,7 @@ import edu.colorado.hopper.jumping.RelevanceRelation
 import edu.colorado.hopper.state.Path
 import edu.colorado.walautil.ClassUtil
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class ProgramStats(val rr : RelevanceRelation) {
   val cg = rr.cg
@@ -19,7 +19,7 @@ class ProgramStats(val rr : RelevanceRelation) {
   val nodeCostMap = {
     val topoIter = Topological.makeTopologicalIter(cg)
     // foldRight is important here -- foldLeft does root-first traversal. we want leaf-first
-    topoIter.foldRight (Map.empty[CGNode, Long]) ((n, m) => n.getIR match {
+    topoIter.asScala.foldRight (Map.empty[CGNode, Long]) ((n, m) => n.getIR match {
       case null => m
       case ir if n.getMethod.isClinit || n.getMethod.isSynthetic || ClassUtil.isLibrary(n) => m // ignoring library code
       case ir =>
@@ -34,7 +34,7 @@ class ProgramStats(val rr : RelevanceRelation) {
     @annotation.tailrec
     def enumeratePathsRec(finder : DFSPathFinder[T], acc : V) : V = finder.find() match {
       case null => acc
-      case path => enumeratePathsRec(finder, f(acc, path.toList))
+      case path => enumeratePathsRec(finder, f(acc, path.asScala.toList))
     }
 
     //val finder = new DFSPathFinder[T](g, src, new CollectionFilter(java.util.Collections.singleton(snk)))
@@ -50,7 +50,7 @@ class ProgramStats(val rr : RelevanceRelation) {
       if (targets.isEmpty) 1L
       else
         // sum the costs of possible callees, counting a callee as free if we don't have a cost summary for it
-        targets.foldLeft (0L) ((sum, n) => sum + nodeCostMap.getOrElse(n, 0L)) match {
+        targets.asScala.foldLeft (0L) ((sum, n) => sum + nodeCostMap.getOrElse(n, 0L)) match {
           case 0L => 1L
           case n => n
         }

@@ -1,7 +1,7 @@
 package edu.colorado.hopper.state
 
-import com.twitter.util.LruMap
 import edu.colorado.hopper.state.InvariantMap._
+import org.apache.commons.collections4.map.LRUMap
 
 object InvariantMap {
   val DEBUG = false
@@ -9,7 +9,7 @@ object InvariantMap {
   val MAX_SIZE = 1000
 }
 
-class InvariantMap[T](val invMap : LruMap[T,MinSet[Path]] = new LruMap[T,MinSet[Path]](MAX_SIZE)) { 
+class InvariantMap[T](val invMap : LRUMap[T,MinSet[Path]] = new LRUMap[T,MinSet[Path]](MAX_SIZE)) {
   
    /**
    * @return true if path @param p entails the weakest invariant at @param key
@@ -19,7 +19,7 @@ class InvariantMap[T](val invMap : LruMap[T,MinSet[Path]] = new LruMap[T,MinSet[
   // TODO: figure out when to widen here. if a constraint has a smaller concretization, but no new path vars, we should widen...
   def pathEntailsInv(key : T, c : Path) : Boolean = {
     //println("inv contains key " + key + "? " + invMap.contains(key))
-    val inv = invMap.getOrElse(key, new MinSet[Path])
+    val inv = invMap.getOrDefault(key, new MinSet[Path])
     val newInv = inv + c.deepCopy
     if (DEBUG) println("inv was (size " + inv.size + ")" + inv + " newInv is " + newInv)
     if (newInv eq inv) {
@@ -44,9 +44,9 @@ class InvariantMap[T](val invMap : LruMap[T,MinSet[Path]] = new LruMap[T,MinSet[
   }
   
   def clear() : Unit = invMap.clear
-    
-  override def clone : InvariantMap[T] = 
-    new InvariantMap(new LruMap(InvariantMap.MAX_SIZE, invMap.clone.underlying.asInstanceOf[java.util.Map[T,MinSet[Path]]]))
+    //TODO: Why did this override clone?
+//  override def clone : InvariantMap[T] =
+//    new InvariantMap(new LRUMap(InvariantMap.MAX_SIZE, invMap.clone.underlying.asInstanceOf[java.util.Map[T,MinSet[Path]]]))
   
 }
 //} else {

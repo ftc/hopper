@@ -3,12 +3,12 @@ package edu.colorado.hopper.client.android
 import com.ibm.wala.ipa.callgraph.{CallGraph, CGNode}
 import com.ibm.wala.util.graph.traverse.BFSIterator
 import edu.colorado.walautil.{GraphUtil, ClassUtil}
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object AndroidUtil {
 
   def isEntrypointCallback(n : CGNode, cg : CallGraph) : Boolean =
-    !ClassUtil.isLibrary(n) && cg.getPredNodes(n).exists(n => ClassUtil.isLibrary(n))
+    !ClassUtil.isLibrary(n) && cg.getPredNodes(n).asScala.exists(n => ClassUtil.isLibrary(n))
 
   // special reachability check to account for call graph imprecision in Android apps. the problem is that whenever a
   // method that places a message on the event queue is reachable, this starts a thread that calls dispatchMessage()
@@ -24,7 +24,7 @@ object AndroidUtil {
     val iter =
       new BFSIterator[CGNode](cg, n) {
         override def getConnected(n : CGNode) : java.util.Iterator[_ <: CGNode] =
-          cg.getSuccNodes(n).filter(n => frontierFilter(n))
+          cg.getSuccNodes(n).asScala.filter(n => frontierFilter(n)).asJava
       }
     GraphUtil.bfsIterFold(iter, Set.empty[CGNode], ((s : Set[CGNode], n : CGNode) => s + n))
   }

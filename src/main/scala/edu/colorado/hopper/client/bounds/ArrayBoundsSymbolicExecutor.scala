@@ -9,7 +9,7 @@ import edu.colorado.hopper.state.Path
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.{CFGUtil, LoopUtil}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object ArrayBoundsSymbolicExecutor {
   private val DEBUG = Options.DEBUG
@@ -85,15 +85,15 @@ trait ArrayBoundsSymbolicExecutor extends UnstructuredSymbolicExecutor {
           instrPaths.foreach(p => p.setBlk(pred))
           filterFailPaths(instrPaths, passPaths, failPaths, test)          
         case n => 
-          if (DEBUG) { print(" > 1 pred "); preds.foreach(p => print(" BB" + p.getNumber())); println }
+          if (DEBUG) { print(" > 1 pred "); preds.asScala.foreach(p => print(" BB" + p.getNumber())); println }
           val p = instrPaths.head
           val blk = p.blk
-          val phis = p.blk.iteratePhis().toIterable
+          val phis = p.blk.iteratePhis().asScala.toIterable
               
           // push all paths up to the join
           val initCallStackSize = p.callStackSize
           val prunedCFG = ExceptionPrunedCFG.make(cfg)
-          val predList = preds.toList.filter(blk => prunedCFG.containsNode(blk))            
+          val predList = preds.asScala.toList.filter(blk => prunedCFG.containsNode(blk))
           // this is a weird case that arises with explicitly infinite loops or ony exceptional predecessors
           // refute, since there's no way we ever could have gotten here
           if (predList.isEmpty || prunedCFG.getNumberOfNodes() == 0) (passPaths, failPaths)

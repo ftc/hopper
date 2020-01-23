@@ -1,6 +1,6 @@
 package edu.colorado.hopper.synthesis
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import com.ibm.wala.classLoader.IClass
 import com.ibm.wala.classLoader.IMethod
 import com.ibm.wala.classLoader.NewSiteReference
@@ -56,7 +56,7 @@ class DummyIMethod(m : IMethod, c : DummyIClass, cha : IClassHierarchy) extends 
           // this is a hack that doesn't solve the problem fully. when the return type is Object here, we return a phi of all possible concrete types
           // a smarter thing to do would be to find all cast instructions and return a phi of all types T involved in downcasts
           val subs = if (retTypeClass.isInterface()) cha.getImplementors(retTypeClass.getReference()) else cha.computeSubClasses(retTypeClass.getReference())
-          val concreteSubs = subs.filter(c => !c.isAbstract() && !c.isInterface())
+          val concreteSubs = subs.asScala.filter(c => !c.isAbstract() && !c.isInterface())
           concreteSubs.foldLeft (List.empty[SSAInstruction]) ((instrs, c) => {
             // allocate an instance whose type is the return value of the method          
             val defNum = mkFreshValueNum// get fresh value number for def (make sure not to use one of the param value numbers)

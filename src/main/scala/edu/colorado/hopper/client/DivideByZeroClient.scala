@@ -6,7 +6,7 @@ import edu.colorado.hopper.executor.{DefaultSymbolicExecutor, TransferFunctions}
 import edu.colorado.hopper.state._
 import edu.colorado.walautil.{ClassUtil, IRUtil}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class DivideByZeroClient(appPath : String, libPath : Option[String], mainClass : String, mainMethod : String,
                          isRegression : Boolean = false)
@@ -20,12 +20,12 @@ class DivideByZeroClient(appPath : String, libPath : Option[String], mainClass :
       tbl.isIntegerConstant(useNum) && tbl.getIntValue(useNum) != 0
 
     val (numUnsafe, numChecked) =
-      walaRes.cg.foldLeft ((0,0)) ((countPair, n) => // for each node n in the call graph
+      walaRes.cg.asScala.foldLeft ((0,0)) ((countPair, n) => // for each node n in the call graph
         if (!ClassUtil.isLibrary(n)) n.getIR match { // don't analyze library code
           case null => countPair
           case ir => // for each instruction in the IR for the call graph node
             val tbl = ir.getSymbolTable
-            ir.iterateAllInstructions().foldLeft (countPair) ((countPair, i) => i match {
+            ir.iterateAllInstructions().asScala.foldLeft (countPair) ((countPair, i) => i match {
               // find all divide instructions of the form x = y / z
               case i : SSABinaryOpInstruction if i.getOperator == IBinaryOpInstruction.Operator.DIV =>
                 val srcLine = IRUtil.getSourceLine(i, ir)

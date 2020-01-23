@@ -17,7 +17,7 @@ import edu.colorado.hopper.jumping.ControlFeasibilityRelevanceRelation
 import edu.colorado.hopper.util.PtUtil
 import edu.colorado.walautil._
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : CallGraph, hg : HeapGraph[InstanceKey],
                                hm : HeapModel, cha : IClassHierarchy,
@@ -28,15 +28,15 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
     appTransformer.getCallbackClasses().foldLeft (Set.empty[IClass]) ((s, t) => cha.lookupClass(t) match {
       case null => s
       case c =>
-        val subs = cha.computeSubClasses(t).foldLeft (s + c) ((s, sub) => s + sub)
-        cha.getImplementors(t).foldLeft (subs) ((s, impl) => s + impl)
+        val subs = cha.computeSubClasses(t).asScala.foldLeft (s + c) ((s, sub) => s + sub)
+        cha.getImplementors(t).asScala.foldLeft (subs) ((s, impl) => s + impl)
     })
 
   // TODO: this is a hack. would be better to make a complete list. at the very least, make sure we have one
   // register method for each callback type. on the other hand, we only lose precision (not soundness) by having
   // a partial list here
   val callbackRegisterMethods : Set[IMethod] =
-    cg.foldLeft (Set.empty[IMethod]) ((s, n) => {
+    cg.asScala.foldLeft (Set.empty[IMethod]) ((s, n) => {
       val m = n.getMethod
       val paramTypes = ClassUtil.getParameterTypes(m)
       if (paramTypes.size == 2) {
@@ -54,8 +54,8 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
   def isCallbackRegisterMethod(m : IMethod) : Boolean = callbackRegisterMethods.contains(m)
 
   def getNodesThatMayRegisterCb(cb : PointerKey) : Set[CGNode] =
-    hg.getSuccNodes(cb).foldLeft(Set.empty[CGNode])((s, k) =>
-      hg.getPredNodes(k).foldLeft(s)((s, k) => k match {
+    hg.getSuccNodes(cb).asScala.foldLeft(Set.empty[CGNode])((s, k) =>
+      hg.getPredNodes(k).asScala.foldLeft(s)((s, k) => k match {
         case l: LocalPointerKey =>
           val n = l.getNode
           if (isCallbackRegisterMethod(n.getMethod)) s + n
@@ -94,11 +94,11 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
     else {
       val iter = new BFSIterator[CGNode](cg, n) {
         override def getConnected(n: CGNode): java.util.Iterator[_ <: CGNode] = {
-          cg.getPredNodes(n).filter(n => !isFrameworkOrStubNode(n))
+          cg.getPredNodes(n).asScala.filter(n => !isFrameworkOrStubNode(n)).asJava
         }
       }
 
-      def hasNonAppPred(n: CGNode): Boolean = cg.getPredNodes(n).exists(n => isFrameworkOrStubNode(n))
+      def hasNonAppPred(n: CGNode): Boolean = cg.getPredNodes(n).asScala.exists(n => isFrameworkOrStubNode(n))
 
       val initFrontierNodes = if (hasNonAppPred(n)) Set(n) else Set.empty[CGNode]
       GraphUtil.bfsIterFold(iter, initFrontierNodes, ((s: Set[CGNode], n: CGNode) =>
@@ -121,7 +121,7 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
         val frontierMethodsForRegister =
           nodesThatMayRegisterCb.foldLeft (Set.empty[IMethod]) ((s, n) => {
             val registerPreds = cg.getPredNodes(n)
-            registerPreds.foldLeft (s) ((s, n) =>
+            registerPreds.asScala.foldLeft (s) ((s, n) =>
               if (!ClassUtil.isLibrary(n))
                 getLibraryAppFrontierNodesFor(n).foldLeft(s)((s, n) => s + n.getMethod)
               else s
@@ -141,7 +141,7 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
       case clinit => clinit
     }
     val specializedLifecyleGraph = new GraphImpl[IMethod](root = Some(clinit))
-    val constructors = lifecycleClass.getDeclaredMethods.filter(m => m.isInit)
+    val constructors = lifecycleClass.getDeclaredMethods.asScala.filter(m => m.isInit)
     // add <clinit> -> constructor happens-before edges
     constructors.foreach(constructor => specializedLifecyleGraph.addEdge(clinit, constructor))
 
@@ -218,8 +218,9 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
           case SUPPORT_FRAGMENT_TYPE_STR => specializeAndroidLifecycleGraph (supportFragmentLifecycleGraph)
           case _ => // else. we don't know anything about the lifecycle of this component
         }
+        val nodes: Iterable[IMethod] = specializedLifecyleGraph.nodes
         if (curNodeIsCallback && curMethod.getDeclaringClass == lifecycleClass &&
-          !specializedLifecyleGraph.nodes.contains(curMethod))
+          !nodes.exists(_.equals(curMethod)))
           getActiveStatePredecessor(typeStr, specializedLifecyleGraph) match {
             case Some(activeStatePred) =>
               // this type has an active state. find any of its callbacks cb that are not in the lifecycle graph
@@ -278,7 +279,7 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
               override def getConnected(n: IMethod): java.util.Iterator[_ <: IMethod] = {
                 // cut off the search when we hit a relevant method
                 if (frontierMethods.contains(n)) java.util.Collections.emptyIterator()
-                else asJavaIterator(lifecycleGraph.getPredNodes(n))
+                else lifecycleGraph.getPredNodes(n)
               }
             }
             val toVisitIfMustAlias =
@@ -323,7 +324,7 @@ class AndroidRelevanceRelation(appTransformer : AndroidAppTransformer, cg : Call
       methods.foldLeft (Set.empty[CGNode]) ((s, m) =>
         methodNodeMap.get(m) match {
           case Some(n) => s + n
-          case None => cg.getNodes(m.getReference).foldLeft (s) ((s, n) => s + n)
+          case None => cg.getNodes(m.getReference).asScala.foldLeft (s) ((s, n) => s + n)
         }
       )
     (getNodesForMethods(methodsToVisitMustAlias), getNodesForMethods(methodsToVisitMustNotAlias))

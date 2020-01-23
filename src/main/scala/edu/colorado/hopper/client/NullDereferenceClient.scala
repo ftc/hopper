@@ -14,7 +14,7 @@ import edu.colorado.hopper.util.PtUtil
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil._
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.io.Source
 import scala.xml.XML
 
@@ -106,7 +106,7 @@ class NullDereferenceClient(appPath : String, libPath : Option[String], mainClas
     def shouldIgnore(n : CGNode) : Boolean =
       n.getMethod().getDeclaringClass().getName().toString().startsWith("Ldacapo")
     
-    val filteredCg = cg.filter(n => !ClassUtil.isLibrary(n) && !shouldIgnore(n) && n.getIR() != null)
+    val filteredCg: Iterable[CGNode] = cg.asScala.filter(n => !ClassUtil.isLibrary(n) && !shouldIgnore(n) && n.getIR() != null)
     val dangerKeys = filteredCg.foldLeft (Set.empty[InstanceKey]) ((dangerKeys, n) => {
       val ir = n.getIR()
       val instrs = ir.getInstructions().toIterable
@@ -169,7 +169,7 @@ class NullDereferenceClient(appPath : String, libPath : Option[String], mainClas
               println(s"Exceeded timeout of ${Options.TIMEOUT} seconds. Giving up.")
               true
             case e : Throwable =>
-              println(s"Error on access # $count $e \n${e.getStackTraceString}")
+              println(s"Error on access # $count $e \n${e.toString}")
               if (Options.DEBUG) throw e
               else true // soundly assume we got a witness
           }
@@ -178,19 +178,19 @@ class NullDereferenceClient(appPath : String, libPath : Option[String], mainClas
     }    
 
     // now, every time there is a field read of, field write to, or method call on a value in dangerKeys, we will check it           
-    val (proven, total) = filteredCg.foldLeft (0, 0) ((statsPair, n) => {
+    val (proven, total):(Int,Int) = filteredCg.foldLeft (0, 0) ((statsPair:(Int,Int), n) => {
       val ir = n.getIR
       val instrs = ir.getInstructions().toIterable
       val tbl = ir.getSymbolTable()
-      instrs.foldLeft (statsPair) ((statsPair, i) => i match {
+      instrs.foldLeft (statsPair) ((statsPair:(Int,Int), i) => i match {
         case i : SSAFieldAccessInstruction if !i.isStatic() && !IRUtil.isThisVar(i.getRef()) &&
                                               mayHoldDangerKey(i.getRef(), n, tbl) =>
-          val numProven = (if (canBeNullDeref(i.getRef(), i, n, statsPair._2)) 0 else 1) + statsPair._1
+          val numProven: Int = (if (canBeNullDeref(i.getRef(), i, n, statsPair._2)) 0 else 1) + statsPair._1
           (numProven, statsPair._2 + 1)
         case i : SSAInvokeInstruction if !i.isStatic() && !i.getDeclaredTarget().isInit() &&
                                          !tbl.isStringConstant(i.getReceiver) && !IRUtil.isThisVar(i.getReceiver()) &&
                                          mayHoldDangerKey(i.getReceiver(), n, tbl) =>
-          val numProven = (if (canBeNullDeref(i.getReceiver(), i, n, statsPair._2)) 0 else 1) + statsPair._1
+          val numProven: Int = (if (canBeNullDeref(i.getReceiver(), i, n, statsPair._2)) 0 else 1) + statsPair._1
           (numProven, statsPair._2 + 1)
         case _ => statsPair
       })      

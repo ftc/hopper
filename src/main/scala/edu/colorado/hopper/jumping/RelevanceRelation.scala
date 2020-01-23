@@ -9,17 +9,18 @@ import com.ibm.wala.ssa.{ISSABasicBlock, SSAArrayLoadInstruction, SSAArrayStoreI
 import com.ibm.wala.util.graph.dominators.Dominators
 import com.ibm.wala.util.graph.impl.GraphInverter
 import com.ibm.wala.util.intset.{BasicNaturalRelation, OrdinalSet}
-import com.twitter.util.LruMap
+//import com.twitter.util.LruMap
 import edu.colorado.hopper.jumping.RelevanceRelation._
 import edu.colorado.hopper.solver.UnknownSMTResult
 import edu.colorado.hopper.state.{ArrayFld, ArrayPtEdge, Fld, HeapPtEdge, InstanceFld, LocalPtEdge, LocalVar, ObjPtEdge, ObjVar, Path, PtEdge, Pure, PureVar, Qry, ReturnVar, StaticFld, StaticPtEdge, Val, Var}
 import edu.colorado.walautil.Types._
-import edu.colorado.walautil.{ClassUtil, IRUtil, Util, CGNodeUtil}
+import edu.colorado.walautil.{CGNodeUtil, ClassUtil, IRUtil, Util}
 import edu.colorado.hopper.util.PtUtil
 import edu.colorado.thresher.core.{Options, WALACFGUtil}
 import edu.colorado.walautil.CFGUtil
+import org.apache.commons.collections4.map.LRUMap
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 
 
@@ -38,7 +39,7 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
                         val cha : IClassHierarchy,
                         // TODO: extract relevance relation that doesn't need this
                         val cgTransitiveClosure : java.util.Map[CGNode,OrdinalSet[CGNode]] = null) {
-  val producerCache = new LruMap[PtEdge, List[(CGNode,SSAInstruction)]](CACHE_SIZE) 
+  val producerCache = new LRUMap[PtEdge, List[(CGNode,SSAInstruction)]](CACHE_SIZE)
  
   def cleanup() : Unit = {
     producerCache.clear
@@ -48,7 +49,7 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
   def getReachableInstrs(blk : ISSABasicBlock, node : CGNode) : Set[SSAInstruction] = {
     val cfg = ExceptionPrunedCFG.make(node.getIR().getControlFlowGraph()) // ignoring exceptions for now
     CFGUtil.getBackwardReachableFrom(blk, cfg, inclusive = false).foldLeft (Set.empty[SSAInstruction]) ((set, blk) => 
-      blk.asInstanceOf[SSACFG#BasicBlock].getAllInstructions().foldLeft (set) ((set, instr) => set + instr))
+      blk.asInstanceOf[SSACFG#BasicBlock].getAllInstructions().asScala.foldLeft (set) ((set, instr) => set + instr))
   }
   
   /**
@@ -71,7 +72,7 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
     def makeWorklistFor(callee : CGNode, worklist : List[(CGNode,CGNode)] = List.empty) : List[(CGNode,CGNode)] = {
       val calleeId = callee.getGraphNodeId()
       // add pred -> caller edges to the worklist and relevant node list
-      cg.getPredNodes(callee).foldLeft (worklist) ((worklist, pred) => {
+      cg.getPredNodes(callee).asScala.foldLeft (worklist) ((worklist, pred) => {
         relevantEdges.add(pred.getGraphNodeId(), calleeId) 
         (pred, callee) :: worklist
       })               
@@ -84,7 +85,7 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
           val (callerNum, calleeNum) = (caller.getGraphNodeId(), callee.getGraphNodeId())
           val reachable = upSet.getOrElse(caller, Util.makeSet[SSAInstruction])
                     
-          val sites = cg.getPossibleSites(caller, callee).toSet
+          val sites = cg.getPossibleSites(caller, callee).asScala.toSet
           val callInstrs = IRUtil.getAllInstructions(caller).collect({ case i : SSAInvokeInstruction if sites.contains(i.getCallSite()) => i })
           callInstrs.foreach(call => {
             addEdgeInstr(caller, call)
@@ -159,10 +160,10 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
       
       // find each reachable call in node and add the call graph transitive closure of the nodes reachable from the call to the down set
       reachable.collect({ case i : SSAInvokeInstruction if !edgeCalls.contains(i) =>
-        cg.getPossibleTargets(node, i.getCallSite()).foreach(target => {
+        cg.getPossibleTargets(node, i.getCallSite()).asScala.foreach(target => {
         //cg.getNodes(i.getDeclaredTarget()).foreach(target => {
         //getSuccs(target, cg, 1) // for instrumentation purposes
-        if (!downReachable.contains(target)) (downReachable ++= OrdinalSet.toCollection(cgTransitiveClosure.get(target)) += target)
+        if (!downReachable.contains(target)) (downReachable ++= OrdinalSet.toCollection(cgTransitiveClosure.get(target)).asScala += target)
       })})
       map + (node -> downReachable)
     })
@@ -173,7 +174,7 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
     //val fakeWorldClinit = WALACFGUtil.getFakeWorldClinitNode(cg)
     val fakeWorldClinit = CGNodeUtil.getFakeWorldClinitNode(cg).get
     map +
-      (fakeWorldClinit -> (Util.makeSet[CGNode] ++= (OrdinalSet.toCollection(cgTransitiveClosure.get(fakeWorldClinit)))))
+      (fakeWorldClinit -> (Util.makeSet[CGNode] ++= (OrdinalSet.toCollection(cgTransitiveClosure.get(fakeWorldClinit)).asScala)))
   }
   
   def computeUpAndDownSet(p : Path) : (Map[CGNode,MSet[SSAInstruction]], Map[CGNode, MSet[CGNode]])= {
@@ -338,12 +339,12 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
         
         def flowSensitiveOk(node : CGNode, targetNode : CGNode) : Boolean = {
           // TODO: do dominator check here also?
-          val preds = cg.getPredNodes(node).toList
+          val preds = cg.getPredNodes(node).asScala.toList
           if (preds.size == 1) {
             val pred = preds.head
             if (downSet(pred).contains(targetNode)) {
                println("pred " + ClassUtil.pretty(pred) + " calls " + ClassUtil.pretty(targetNode) + " directly")
-              val sites = cg.getPossibleSites(pred, targetNode).toSet
+              val sites = cg.getPossibleSites(pred, targetNode).asScala.toSet
               assert(!sites.isEmpty)
               val callInstrs = upSet(pred).collect({ case i : SSAInvokeInstruction if sites.contains(i.getCallSite()) => i})
               assert(!callInstrs.isEmpty)
@@ -504,9 +505,20 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
    */
   def getProducers(e : PtEdge, qry : Qry) : List[(CGNode, SSAInstruction)] =
     // don't want to use cache with pure var constraints, as the same pure var may have different values in different theorem
-    // prover contexts    
-    if (e.snk.isInstanceOf[PureVar] || (Options.INDEX_SENSITIVITY && e.isInstanceOf[ArrayPtEdge])) getModifiersOrProducersInternal(e, qry, getModifiers = false)
-    else producerCache.getOrElseUpdate(e, getModifiersOrProducersInternal(e, qry, getModifiers = false))      
+    // prover contexts
+  {
+    val value = getModifiersOrProducersInternal(e, qry, getModifiers = false)
+    if (e.snk.isInstanceOf[PureVar] || (Options.INDEX_SENSITIVITY && e.isInstanceOf[ArrayPtEdge])) {
+      value
+    } else {
+      if (producerCache.containsKey(e)) {
+        producerCache.get(e)
+      } else {
+        producerCache.put(e, value)
+        value
+      }
+    }
+  }
   
   private def getProducerOrModifierNodesAndHeapCheck(rgnLhs : Set[InstanceKey], snk : Val, getModifiers : Boolean) : (Set[CGNode], (Int, CGNode, Set[InstanceKey]) => Boolean) = {
     val lhsPreds = PtUtil.getLocalPreds(rgnLhs, hg)
@@ -578,12 +590,12 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
               case Some(classInit) => List(classInit)
               case None => sys.error("Class initializer should exist for final static field!")
             } else { 
-              if (getModifiers) cg.toSet // since we're node allowed to reason about the RHS, need to consider *all* nodes in the callgraph
+              if (getModifiers) cg.asScala.toSet // since we're node allowed to reason about the RHS, need to consider *all* nodes in the callgraph
               else getLPKNodes(rhsPreds) 
             }          
           (nodes, if (getModifiers) nopHeapCheck else (argUse : Int, node : CGNode, rgnRhs : Set[InstanceKey]) => rhsPreds.contains(Var.makeLPK(argUse, node, hm)))
         case p@PureVar(_) => // this case is annoying because the write could be in *any* CGNode. find the ones with at least one candidate write 
-          (cg.iterator().foldLeft (List.empty[CGNode]) ((lst, node) => {
+          (cg.iterator().asScala.foldLeft (List.empty[CGNode]) ((lst, node) => {
             val ir = node.getIR() 
             if (ir != null && 
               IRUtil.getAllInstructions(node).exists(i => i match {
@@ -629,8 +641,8 @@ class RelevanceRelation(val cg : CallGraph, val hg : HeapGraph[InstanceKey], val
     case LocalPtEdge(LocalVar(lhs), snk) =>                          
       val node = lhs.getNode()      
       // TODO : use query call stack information here if applicable
-      if (lhs.isParameter()) cg.getPredNodes(node).foldLeft (List.empty[(CGNode, SSAInstruction)]) ((lst, caller) => {
-        val sites = cg.getPossibleSites(caller, node).toSet
+      if (lhs.isParameter()) cg.getPredNodes(node).asScala.foldLeft (List.empty[(CGNode, SSAInstruction)]) ((lst, caller) => {
+        val sites = cg.getPossibleSites(caller, node).asScala.toSet
         val ir = caller.getIR()
         if (ir != null) {
           val tbl = caller.getIR().getSymbolTable()

@@ -7,7 +7,7 @@ import com.ibm.wala.ipa.cha.IClassHierarchy
 import edu.colorado.hopper.state.{ArrayPtEdge, ClassVar, Fld, HeapPtEdge, LocalPtEdge, ObjPtEdge, ObjVar, Pure, PureVar, StaticFld, Val}
 import edu.colorado.walautil.Types.MSet
 
-import scala.collection.JavaConversions.{asScalaIterator, setAsJavaSet}
+import scala.jdk.CollectionConverters._
 
 
 object PtUtil {
@@ -15,18 +15,18 @@ object PtUtil {
   // ==== consulting the heap graph for points-to facts ====
   
   private def getSuccs[T](src : Set[_ <: Object], hg : HeapGraph[InstanceKey]) : Set[T] = src.foldLeft (Set.empty[T]) ((keys, key) =>
-    hg.getSuccNodes(key).toIterable.foldLeft (keys) ((keys, key) => keys + key.asInstanceOf[T])) 
+    hg.getSuccNodes(key).asScala.toIterable.foldLeft (keys) ((keys, key) => keys + key.asInstanceOf[T]))
       
   def getPtI(i : InstanceKey, fld : IField, hg : HeapGraph[InstanceKey], keys : Set[InstanceKey]) : Set[InstanceKey] =
-    hg.getSuccNodes(i).foldLeft (keys) ((keys, key) => key match {
-      case f : InstanceFieldKey if f.getField() == fld => hg.getSuccNodes(f).foldLeft (keys) ((keys, key) => keys + key.asInstanceOf[InstanceKey])
+    hg.getSuccNodes(i).asScala.foldLeft (keys) ((keys, key) => key match {
+      case f : InstanceFieldKey if f.getField() == fld => hg.getSuccNodes(f).asScala.foldLeft (keys) ((keys, key) => keys + key.asInstanceOf[InstanceKey])
       case _ => keys
     })
   
   /** @return InstanceKeys pointed to by @param i through any field */
   def getPt(i : InstanceKey, hg : HeapGraph[InstanceKey]) : Set[InstanceKey] =
-    hg.getSuccNodes(i).foldLeft (Set.empty[InstanceKey]) ((s, f) =>
-      hg.getSuccNodes(f).foldLeft (s) ((s, i) => i match {
+    hg.getSuccNodes(i).asScala.foldLeft (Set.empty[InstanceKey]) ((s, f) =>
+      hg.getSuccNodes(f).asScala.foldLeft (s) ((s, i) => i match {
         case i : InstanceKey => s + i
         case _ => s
       })
@@ -48,7 +48,7 @@ object PtUtil {
     getPtI(getPt(l, hg), fld, hg) 
   
   def getPt(k : PointerKey, hg : HeapGraph[InstanceKey]) : Set[InstanceKey] =
-    hg.getSuccNodes(k).toSet.map((k : Object) => k.asInstanceOf[InstanceKey])
+    hg.getSuccNodes(k).asScala.toSet.map((k : Object) => k.asInstanceOf[InstanceKey])
       
   // ==== consulting constraints for points-to facts with a fallback to the heap graph ====
     
@@ -196,7 +196,7 @@ object PtUtil {
   def getPtBy(rgn : Set[InstanceKey], predOk : Object => Option[InstanceKey],
               hg : HeapGraph[InstanceKey]) : Set[InstanceKey] =
     rgn.foldLeft (Set.empty[InstanceKey]) ((keys, key) =>
-      hg.getPredNodes(key).foldLeft (keys) ((keys, key) =>
+      hg.getPredNodes(key).asScala.foldLeft (keys) ((keys, key) =>
         predOk(key) match {
           case Some(k) => keys + k
           case None => keys
@@ -212,19 +212,19 @@ object PtUtil {
   }
   
   def get(base : Object, hg : HeapGraph[InstanceKey]) : Set[InstanceKey] =
-    hg.getSuccNodes(base).collect({ case i : InstanceKey => i}).toSet
+    hg.getSuccNodes(base).asScala.collect({ case i : InstanceKey => i}).toSet
     
   def contains(base : Object, toFind : Set[InstanceKey], hg : HeapGraph[InstanceKey]) : Boolean =
-    hg.getSuccNodes(base).exists(node => toFind.contains(node.asInstanceOf[InstanceKey])) 
+    hg.getSuccNodes(base).asScala.exists(node => toFind.contains(node.asInstanceOf[InstanceKey]))
     
   def contains(base : Object, fld : IField, toFind : Set[InstanceKey],
                hg : HeapGraph[InstanceKey]) : Boolean = base match {
     case l : LocalPointerKey => 
-      hg.getSuccNodes(l).exists(instanceKey => contains(instanceKey, fld, toFind, hg))      
+      hg.getSuccNodes(l).asScala.exists(instanceKey => contains(instanceKey, fld, toFind, hg))
     case i : InstanceKey =>
-      hg.getSuccNodes(i).exists({ 
+      hg.getSuccNodes(i).asScala.exists({
         case f : InstanceFieldKey => f.getField() == fld && 
-          hg.getSuccNodes(f).exists(key => toFind.contains(key)) 
+          hg.getSuccNodes(f).asScala.exists(key => toFind.contains(key.asInstanceOf[InstanceKey]))
         case other => sys.error("unexpected kind of key " + other) })
     case other => sys.error("bad base : " + other + " type " + other.getClass())
   }
@@ -232,27 +232,27 @@ object PtUtil {
   // TODO: this is pretty terrible...
   def arrContains(base : Object, toFind : Set[InstanceKey], hg : HeapGraph[InstanceKey]) : Boolean = base match {
     case l : LocalPointerKey => 
-      hg.getSuccNodes(l).exists(instanceKey => arrContains(instanceKey, toFind, hg))      
-    case i : InstanceKey => hg.getSuccNodes(i).exists(
+      hg.getSuccNodes(l).asScala.exists(instanceKey => arrContains(instanceKey, toFind, hg))
+    case i : InstanceKey => hg.getSuccNodes(i).asScala.exists(
       { case k : ArrayContentsKey => 
-        hg.getSuccNodes(k).exists(key => toFind.contains(key.asInstanceOf[InstanceKey])) })
+        hg.getSuccNodes(k).asScala.exists(key => toFind.contains(key.asInstanceOf[InstanceKey])) })
     case other => sys.error("bad base : " + other + " type " + other.getClass())
   }
   
   def contains(base : Object, toFind : InstanceKey, hg : HeapGraph[InstanceKey]) : Boolean =
-    hg.getSuccNodes(base).exists(node => node == toFind)
+    hg.getSuccNodes(base).asScala.exists(node => node == toFind)
   
   def contains(base : Object, fld : IField, toFind : InstanceKey, hg : HeapGraph[InstanceKey]) : Boolean = base match {
     case l : LocalPointerKey => 
-      hg.getSuccNodes(l).exists(instanceKey => contains(instanceKey, fld, toFind, hg))      
-    case i : InstanceKey => hg.getSuccNodes(i).exists(
+      hg.getSuccNodes(l).asScala.exists(instanceKey => contains(instanceKey, fld, toFind, hg))
+    case i : InstanceKey => hg.getSuccNodes(i).asScala.exists(
       { case f : InstanceFieldKey if f.getField() == fld => 
-        hg.getSuccNodes(f).exists(key => key == toFind) })
+        hg.getSuccNodes(f).asScala.exists(key => key == toFind) })
     case other => sys.error("bad base : " + other + " type " + other.getClass())
   }
 
   def getLocalPreds(keys : Set[InstanceKey], hg : HeapGraph[InstanceKey]) : Set[LocalPointerKey] =
-    keys.foldLeft (Set.empty[LocalPointerKey]) ((s, key) => hg.getPredNodes(key).foldLeft (s) ((s, k) => k match {
+    keys.foldLeft (Set.empty[LocalPointerKey]) ((s, key) => hg.getPredNodes(key).asScala.foldLeft (s) ((s, k) => k match {
       case k : LocalPointerKey => s + k
       case _ => s
     }))

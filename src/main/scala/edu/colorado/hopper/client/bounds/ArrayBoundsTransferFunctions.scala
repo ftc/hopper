@@ -6,7 +6,7 @@ import edu.colorado.hopper.executor.TransferFunctions
 import edu.colorado.hopper.state.Qry
 import edu.colorado.walautil.{Util, WalaAnalysisResults}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 class ArrayBoundsTransferFunctions(walaRes : WalaAnalysisResults) 
   extends TransferFunctions(walaRes.cg, walaRes.hg, walaRes.hm, walaRes.cha) {
@@ -30,7 +30,7 @@ class ArrayBoundsTransferFunctions(walaRes : WalaAnalysisResults)
   }
   
   override def dropLoopWriteableConstraints(qry : Qry, loopHead : ISSABasicBlock, n : CGNode) : Unit = {
-    val loopInstrs = edu.colorado.thresher.core.WALACFGUtil.getInstructionsInLoop(loopHead.asInstanceOf[SSACFG#BasicBlock], n.getIR()).toSet
+    val loopInstrs = edu.colorado.thresher.core.WALACFGUtil.getInstructionsInLoop(loopHead.asInstanceOf[SSACFG#BasicBlock], n.getIR()).asScala.toSet
     dropConstraintsFromInstructions(loopInstrs, n, qry, callee = None, loopDrop = true)
   }
   

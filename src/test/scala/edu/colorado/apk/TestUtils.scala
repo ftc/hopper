@@ -3,7 +3,7 @@ package edu.colorado.apk
 import java.io.File
 
 import scala.collection.mutable
-import scala.sys.process._
+import scala.sys.process.Process
 
 object TestUtils {
   var buildCache = mutable.Map[String,File]()
@@ -13,7 +13,7 @@ object TestUtils {
         val dir = getClass.getResource(s"/${resName}").getPath
         val runbuild = getClass.getResource("/runbuild.sh").getPath
 
-        if ((s"bash ${runbuild} ${dir}" !) != 0)
+        if (Process(s"bash ${runbuild} ${dir}").! != 0)
           throw new RuntimeException(s"Building test project failed: ${resName}")
         val apkfile = new File(s"${dir}/bin/app.apk")
         assert(apkfile.exists())

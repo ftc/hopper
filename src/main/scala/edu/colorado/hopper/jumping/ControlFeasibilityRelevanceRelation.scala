@@ -14,7 +14,7 @@ import edu.colorado.hopper.state._
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.{CFGUtil, ClassUtil, GraphUtil, IRUtil}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 object ControlFeasibilityRelevanceRelation {
 
@@ -76,7 +76,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
                 case Some((blk, index)) => (blk, index)
                 case None => sys.error(s"Couldn't find conditional instr $condInstr in $ir")
               }
-            val succs = cfg.getNormalSuccessors(condBlk).toList
+            val succs = cfg.getNormalSuccessors(condBlk).asScala.toList
             assert(succs.size == 2)
             val (succ1, succ2) = (succs(0), succs(1))
             val succ1DominatesRelInstr = blksForRelInstructions.exists(b => domInfo.isDominatedBy(b, succ1))
@@ -132,7 +132,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
             blk: ISSABasicBlock): (Set[SSAInstruction], Set[ISSABasicBlock]) = {
         val (visitedRelInstrs, reachedBlocks) = acc
         val newVisitedRelInstrs =
-          blk.find(instr => allRelInstrs.contains(instr)) match {
+          blk.asScala.find(instr => allRelInstrs.contains(instr)) match {
             case Some(instr) => visitedRelInstrs + instr
             case None => visitedRelInstrs
           }
@@ -172,7 +172,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
           val iter =
             new BFSIterator[ISSABasicBlock](cfg, cfg.exit()) {
               override def getConnected(blk: ISSABasicBlock) =
-                if (blk.exists(instr => relInstrs.contains(instr))) java.util.Collections.emptyIterator()
+                if (blk.asScala.exists(instr => relInstrs.contains(instr))) java.util.Collections.emptyIterator()
                 // TODO: this isn't sound w.r.t exceptions--make sure none of the relevant instructions are contained
                 // in a try block
                 else cfg.getNormalPredecessors(blk).iterator()
@@ -206,15 +206,15 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
     val ir = caller.getIR
     val cfg = ir.getControlFlowGraph
     val siteBlks =
-      cg.getPossibleSites(caller, callee).foldLeft(Set.empty[ISSABasicBlock])((siteBlks, site) =>
+      cg.getPossibleSites(caller, callee).asScala.foldLeft(Set.empty[ISSABasicBlock])((siteBlks, site) =>
         ir.getBasicBlocksForCall(site).foldLeft(siteBlks)((siteBlks, blk) => siteBlks + blk))
-    val exitBlks = cfg.getNormalPredecessors(cfg.exit()).toSet
+    val exitBlks = cfg.getNormalPredecessors(cfg.exit()).asScala.toSet
     !siteBlks.intersect(exitBlks).isEmpty || {
       // check that these siteBlks as a set postdominate the entry block
       val iter =
         new BFSIterator[ISSABasicBlock](cfg, cfg.entry()) {
           override def getConnected(b: ISSABasicBlock): java.util.Iterator[_ <: ISSABasicBlock] =
-            cfg.getNormalSuccessors(b).iterator().filter(b => !siteBlks.contains(b))
+            cfg.getNormalSuccessors(b).iterator().asScala.filter(b => !siteBlks.contains(b)).asJava
         }
       // siteBlks postdominate the entry block if BFS-ing forward from the entry block and stopping when we hit
       // a siteBlk does not allow us to reach the exit block
@@ -226,15 +226,15 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
   def calledFromAllConstructors(n: CGNode): Boolean = {
     val m = n.getMethod
     val declClass = m.getDeclaringClass
-    val allConstructors : Set[IMethod] = declClass.getDeclaredMethods.filter(m => m.isInit).toSet
+    val allConstructors : Set[IMethod] = declClass.getDeclaredMethods.asScala.filter(m => m.isInit).toSet
     def isCalledFromAllConstructors(): Boolean = {
       val iter =
         new BFSIterator[CGNode](cg, n) {
           override def getConnected(n: CGNode): java.util.Iterator[_ <: CGNode] =
-            cg.getPredNodes(n).filter(n => {
+            cg.getPredNodes(n).asScala.filter(n => {
               val m = n.getMethod
               m.isInit || m.getDeclaringClass == declClass
-            })
+            }).asJava
         }
       val visitedConstructors =
         GraphUtil.bfsIterFold[CGNode,Set[IMethod]](iter, Set.empty[IMethod], ((s: Set[IMethod], n: CGNode) => s + n.getMethod))
@@ -256,7 +256,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
           // this is true because the class initializer for C must run before any methods on objects of type T <: C
           true
         case (m1, m2) if m1.isInit && cha.isAssignableFrom(m1.getDeclaringClass, m2.getDeclaringClass) &&
-          m1.getDeclaringClass.getDeclaredMethods.filter(m => m.isInit).size == 1 =>
+          m1.getDeclaringClass.getDeclaredMethods.asScala.filter(m => m.isInit).size == 1 =>
           // we can filter if m1 is the only constructor of some type C, and m2 is a method or constructor on some type
           // T <: C
           true
@@ -308,7 +308,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
                               cfg : PrunedCFG[SSAInstruction,ISSABasicBlock]) : Iterable[ISSABasicBlock] = {
       val bwReachable = CFGUtil.getBackwardReachableFrom(blk, cfg, inclusive = true)
       bwReachable.filter(blk => CFGUtil.isConditionalBlock(blk) &&
-                                cfg.getSuccNodes(blk).exists(blk => !bwReachable.contains(blk)))
+                                cfg.getSuccNodes(blk).asScala.exists(blk => !bwReachable.contains(blk)))
     }
 
     nodeInstrMap.map(entry => {
@@ -321,7 +321,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
           else CFGUtil.findInstr(ir, i) match {
             case Some((blk, _)) =>
               getDominatingCondBlks(blk, cfg).foldLeft (relInstructions) ((relInstructions, blk) => {
-                blk.foldLeft (relInstructions) ((relInstructions, i) => i match {
+                blk.asScala.foldLeft (relInstructions) ((relInstructions, i) => i match {
                   case i : SSAConditionalBranchInstruction => relInstructions + i
                   case _ => relInstructions
                 })
@@ -338,7 +338,7 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
     def getRelevantAssumesForLocalPointers(localPointers : Iterable[LocalPointerKey],
                                            s : Set[(CGNode,SSAConditionalBranchInstruction)]) = {
       // find conditionals in the IR that compare one of the LPK's to null
-      val lpksByNode =
+      val lpksByNode: Map[CGNode, Iterable[Int]] =
         localPointers.groupBy(k => k.getNode).map(entry => {
           val (node, vals) = entry
           node -> vals.map(k => k.getValueNumber)
@@ -349,10 +349,11 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
           case null => s
           case ir =>
             val tbl = ir.getSymbolTable
-            ir.iterateAllInstructions().foldLeft (s) ((s, i) => i match {
+            ir.iterateAllInstructions().asScala.foldLeft (s) ((s, i) => i match {
               case i : SSAConditionalBranchInstruction =>
                 val (use0, use1) = (i.getUse(0), i.getUse(1))
-                if ((valueNums.contains(use0) || valueNums.contains(use1)) &&
+                val nums: Iterable[Int] = valueNums
+                if ((nums.exists(_ == use0) || nums.exists(_ == use1)) &&
                   (tbl.isNullConstant(use0) || tbl.isNullConstant(use1)))
                   s + ((node, i))
                 else s
@@ -364,8 +365,8 @@ class ControlFeasibilityRelevanceRelation(cg : CallGraph, hg : HeapGraph[Instanc
 
     def getLocalPredsOfSuccs(k : PointerKey,
                              s : Set[LocalPointerKey] = Set.empty[LocalPointerKey]) : Set[LocalPointerKey] =
-      hg.getSuccNodes(k).foldLeft (s) ((s, k) =>
-        hg.getPredNodes(k).foldLeft (s) ((s, k) => k match {
+      hg.getSuccNodes(k).asScala.foldLeft (s) ((s, k) =>
+        hg.getPredNodes(k).asScala.foldLeft (s) ((s, k) => k match {
           case k: LocalPointerKey => s + k
           case _ => s
         })

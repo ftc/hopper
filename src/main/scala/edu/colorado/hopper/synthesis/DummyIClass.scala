@@ -7,7 +7,7 @@ import com.ibm.wala.types.annotations.Annotation
 import com.ibm.wala.util.strings.Atom
 import edu.colorado.walautil.ClassUtil
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 
 trait DummyIClass extends IClass
 
@@ -37,7 +37,7 @@ private class DummyIClassImpl(clazz : IClass, cha : IClassHierarchy) extends Dum
   val dummyClassType = TypeReference.findOrCreateClass(clazz.getClassLoader().getReference(), pkgName,
                                                            "DUMMY_" + clazz.getName().getClassName().toString())
                                                            
-  val (allMethods, declaredMethods) = clazz.getAllMethods().foldLeft ((List.empty[IMethod], List.empty[IMethod])) ((pair, m) => {
+  val (allMethods, declaredMethods) = clazz.getAllMethods().asScala.foldLeft ((List.empty[IMethod], List.empty[IMethod])) ((pair, m) => {
     val (allMethods, declaredMethods) = pair
     if (m.isAbstract()) {
       val newM = new DummyIMethod(m, this, cha)
@@ -63,9 +63,9 @@ private class DummyIClassImpl(clazz : IClass, cha : IClassHierarchy) extends Dum
     l.add(clazz)
     l
   }      
-  override def getDeclaredMethods() : java.util.Collection[IMethod] = declaredMethods  
+  override def getDeclaredMethods() : java.util.Collection[IMethod] = declaredMethods.asJava
   override def getMethod(selector : Selector) : IMethod = methodMap(selector)
-  override def getAllMethods() : java.util.Collection[IMethod] = allMethods
+  override def getAllMethods() : java.util.Collection[IMethod] = allMethods.asJava
       
   // all other methods delegate to superclass      
   override def getClassLoader() : IClassLoader = clazz.getClassLoader()

@@ -20,7 +20,7 @@ import edu.colorado.hopper.util.PtUtil
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil._
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.sys.process._
 
 class AndroidNullDereferenceClient(appPath : String, androidLib : File, useJPhantom : Boolean = true)
@@ -165,11 +165,11 @@ class AndroidNullDereferenceClient(appPath : String, androidLib : File, useJPhan
                             snk == accessPathHead && !IRUtil.isThisVar(key.getValueNumber)
                           case _ => false
                         })
-                      def someCallerMayReadOrWriteFld(): Boolean = cg.getPredNodes(p.node).exists(n => n.getIR match {
+                      def someCallerMayReadOrWriteFld(): Boolean = cg.getPredNodes(p.node).asScala.exists(n => n.getIR match {
                         case null => false
                         case ir =>
                           val fldRef = fld.getReference
-                          ir.iterateAllInstructions().exists(i => i match {
+                          ir.iterateAllInstructions().asScala.exists(i => i match {
                             case i: SSAFieldAccessInstruction => i.getDeclaredField == fldRef
                             case _ => false
                           })
@@ -239,10 +239,10 @@ class AndroidNullDereferenceClient(appPath : String, androidLib : File, useJPhan
             val cg = tf.cg
             val cha = tf.cha
             // try to find the def of possiblyNullUse and use Nit annotations to show it is assigned to a non-null value
-            !ir.iterateAllInstructions().exists(i => i match {
+            !ir.iterateAllInstructions().asScala.exists(i => i match {
               case i : SSAInvokeInstruction if i.getDef == possiblyNullUse =>
                 // the deref cannot fail if every method this call can dispatch to has a non-null annotation
-                val targets = cg.getPossibleTargets(n, i.getCallSite)
+                val targets = cg.getPossibleTargets(n, i.getCallSite).asScala
                 !targets.isEmpty && targets.forall(n => tf.hasNitNonNullReturnAnnotation(n.getMethod))
               case i : SSAGetInstruction if i.getDef == possiblyNullUse =>
                 // we can refute if this is a field read x = y.f and we have a non-null annotation on f
@@ -276,7 +276,7 @@ class AndroidNullDereferenceClient(appPath : String, androidLib : File, useJPhan
                 println(s"Exceeded timeout of ${Options.TIMEOUT} seconds. Giving up.")
               true
             case e: Throwable =>
-              println(s"Error: $e \n${e.getStackTraceString}")
+              println(s"Error: $e \n${e.toString}")
               if (DEBUG) throw e
               else true // soundly assume we got a witness
           }
@@ -312,8 +312,8 @@ class AndroidNullDereferenceClient(appPath : String, androidLib : File, useJPhan
       checkClass && checkMethod && !ClassUtil.isLibrary(n)
     }
 
-    val derefsToCheck =
-      walaRes.cg.foldLeft (List.empty[(Int,CGNode)]) ((l, n) =>
+    val derefsToCheck: Seq[(Int, CGNode)] =
+      walaRes.cg.asScala.foldLeft (List.empty[(Int,CGNode)]) ((l, n) =>
         if (shouldCheck(n)) n.getIR match {
           case null => l
           case ir =>
@@ -334,10 +334,10 @@ class AndroidNullDereferenceClient(appPath : String, androidLib : File, useJPhan
 
     val checkingTimer = new Timer
     checkingTimer.start()
-    val derefsToCheckList = if (PARALLEL) derefsToCheck.par else derefsToCheck
+//    val derefsToCheckList = if (PARALLEL) derefsToCheck.par else derefsToCheck
     var count = 0
     val results =
-      derefsToCheckList.map(pair => {
+      derefsToCheck.map(pair => {
         val (index, node) = pair
         val curCount = if (PARALLEL) -1 else { count += 1; count }
         if (canDerefFail(index, node, hm, curCount)) 1 else 0

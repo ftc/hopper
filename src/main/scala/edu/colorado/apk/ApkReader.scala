@@ -25,9 +25,9 @@ import edu.colorado.walautil.cg.MemoryFriendlyZeroXContainerCFABuilder
 import org.scandroid.util.{AndroidAnalysisContext, CLISCanDroidOptions, ISCanDroidOptions}
 
 import scala.util.matching.Regex
-import collection.JavaConversions
-import sys.process._
-import collection.JavaConverters._
+//import collection.JavaConversions
+import scala.jdk.CollectionConverters._
+import sys.process.Process
 import scala.annotation.tailrec
 import scala.collection.immutable
 import scala.xml.{Elem, NodeSeq, XML}
@@ -171,7 +171,7 @@ object ApkReader {
     val tmpdirf: Path = Files.createTempDirectory("extract_apk")
     val outdir: String = tmpdirf.toAbsolutePath.toString
     val cmd : String = s"java -jar ${apkToolPath} d -o ${outdir} -f --no-src ${apkLoc}"
-    if(( cmd ! ) != 0)
+    if(( Process(cmd).! ) != 0)
       throw new RuntimeException(s"Invocation of APKTool failed, (cmd: ${cmd}")
     val manifestFile: Elem = XML.load(outdir + "/" + "AndroidManifest.xml")
     val activities: immutable.Seq[String] = (manifestFile \\ "activity").flatMap(a => {

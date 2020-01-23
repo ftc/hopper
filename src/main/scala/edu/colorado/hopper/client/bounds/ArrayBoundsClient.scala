@@ -3,6 +3,7 @@ package edu.colorado.hopper.client.bounds
 import java.io.File
 
 import com.ibm.wala.ipa.callgraph.CGNode
+import com.ibm.wala.ipa.callgraph.propagation.InstanceKey
 import com.ibm.wala.ssa.{SSAArrayReferenceInstruction, SSANewInstruction}
 import com.ibm.wala.types.TypeReference
 import edu.colorado.hopper.client.{Client, ClientTests}
@@ -13,7 +14,7 @@ import edu.colorado.hopper.util._
 import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.{CFGUtil, ClassUtil, IRUtil, LoopUtil, Timer, Util}
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
 import scala.io.Source
 
 class ArrayBoundsClient(appPath : String, libPath : Option[String], mainClass : String, mainMethod : String, 
@@ -62,16 +63,16 @@ class ArrayBoundsClient(appPath : String, libPath : Option[String], mainClass : 
     // don't check Dacapo harness methods
     def shouldIgnore(n : CGNode) : Boolean = n.getMethod().getDeclaringClass().getName().toString().startsWith("Ldacapo")
     
-    val (failCount, total) = cg.foldLeft (0, 0) ((countPair, n) => if (!ClassUtil.isLibrary(n) && !shouldIgnore(n)) n.getIR() match {
+    val (failCount, total) : (Int,Int) = cg.asScala.foldLeft (0, 0) ((countPair:(Int,Int), n) => if (!ClassUtil.isLibrary(n) && !shouldIgnore(n)) n.getIR() match {
       case null => countPair
       case ir =>
         val instrs = ir.getInstructions().toIterable
         val tbl = ir.getSymbolTable()
-        instrs.collect({ case i : SSAArrayReferenceInstruction => i }).foldLeft (countPair) ((countPair, instr) => {
+        instrs.collect({ case i : SSAArrayReferenceInstruction => i }).foldLeft (countPair) ((countPair:(Int,Int), instr) => {
           // each instr contains an array reference x[i] where x points to some heap object arr 
           val arrayUse = instr.getArrayRef()
           val arrayLocal = Var.makeLPK(arrayUse, n, hm)
-          val arrayRgn = PtUtil.getPt(arrayLocal, hg)
+          val arrayRgn: Set[InstanceKey] = PtUtil.getPt(arrayLocal, hg)
           if (arrayRgn.isEmpty) countPair // empty pt set -- don't bother to check and can't count toward total
           else if (proveSet.contains(countPair._2)) {
             println(s"Skipping possible bounds fail # ${countPair._2 + 1} due to prove set")
@@ -95,7 +96,7 @@ class ArrayBoundsClient(appPath : String, libPath : Option[String], mainClass : 
               if (isIndexConstant && {
                 val indexConst = tbl.getIntValue(indexUse)
                 // for each array this instruction might refer to
-                arrayRgn.forall(site => site.getCreationSites(cg).forall(pair => pair.fst.getIR().getInstructions().forall(i => i match { 
+                arrayRgn.forall(site => site.getCreationSites(cg).asScala.forall(pair => pair.fst.getIR().getInstructions().forall(i => i match {
                   case i : SSANewInstruction if i.getNewSite() == pair.snd =>
                     val tbl = pair.fst.getIR().getSymbolTable()
                     val lengthUse = i.getUse(0)
@@ -147,7 +148,8 @@ class ArrayBoundsClient(appPath : String, libPath : Option[String], mainClass : 
                     println(s"Exceeded timeout of ${Options.TIMEOUT} seconds. Giving up.")
                     true
                   case e : Throwable =>
-                    println(s"Error on access # $total $e \n${e.getStackTraceString}")
+//                    println(s"Error on access # $total $e \n${e.getStackTraceString}")
+                    println("Error on Access # $total")
                     throw e
                 }
               } 

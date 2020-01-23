@@ -14,7 +14,8 @@ import edu.colorado.thresher.core.Options
 import edu.colorado.walautil.Types.WalaBlock
 import edu.colorado.walautil._
 
-import scala.collection.JavaConversions._
+import scala.jdk.CollectionConverters._
+
 
 object Path {
   val methodNameBlacklist =
@@ -268,7 +269,7 @@ class Path(val qry : Qry, var lastBlk : WalaBlock = null,
   def isClinitPath(cg : CallGraph) : Boolean = {
     val fakeWorldClinit = CGNodeUtil.getFakeWorldClinitNode(cg).get
     qry.callStack.stack.exists(frame => frame.node.equals(fakeWorldClinit) || frame.node.getMethod().isClinit() || (
-    cg.getPredNodeCount(frame.node) == 1 && cg.getPredNodes(frame.node).contains(fakeWorldClinit)))
+    cg.getPredNodeCount(frame.node) == 1 && cg.getPredNodes(frame.node).asScala.contains(fakeWorldClinit)))
   }
 
   def popCallStack : CallStackFrame = qry.callStack.pop
@@ -300,10 +301,10 @@ class Path(val qry : Qry, var lastBlk : WalaBlock = null,
   def setNode(node : CGNode) : Unit = {
     val ir = node.getIR()
     if (ir != null) {
-      val exitBlk = ir.getControlFlowGraph().exit()
+      val exitBlk: SSACFG#BasicBlock = ir.getControlFlowGraph().exit()
       if (!this.callStack.isEmpty) assert(this.node != node, "adding dup " + node + " to stack")
       //callStack.push(new StackFrame2(node, exitBlk, exitBlk.size - 1)) // start at last instr
-      qry.callStack.push(new CallStackFrame(node, Util.makeSet[LocalPtEdge], exitBlk, exitBlk.size - 1))
+      qry.callStack.push(new CallStackFrame(node, Util.makeSet[LocalPtEdge], exitBlk, exitBlk.asScala.size - 1))
     }
   }
 
@@ -327,7 +328,7 @@ class Path(val qry : Qry, var lastBlk : WalaBlock = null,
   def setBlk(newBlk : WalaBlock) : Unit = {
     lastBlk = callStack.top.blk
     callStack.top.blk = newBlk
-    callStack.top.index = newBlk.size - 1
+    callStack.top.index = newBlk.asScala.size - 1
   }
   
   def addConstraintFromConditional(i : SSAConditionalBranchInstruction, isThenBranch : Boolean, tf : TransferFunctions) : Boolean =
